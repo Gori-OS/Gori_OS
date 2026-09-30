@@ -29,3 +29,8 @@ data/sessions.json
 .idea/
 .DS_Store
 Thumbs.db
+
+# Environment variables
+.env
+.env.*
+!.env.example

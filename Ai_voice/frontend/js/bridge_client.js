@@ -7,7 +7,12 @@ class BridgeClient {
         this.socket = null;
         this.reconnectAttempts = 0;
         this.isAuthenticated = false;
-        this.localToken = null;
+        try {
+            this.localToken = localStorage.getItem('novaos_token') || null;
+        } catch (e) {
+            this.localToken = null;
+        }
+        this._retryingAuth = false;
         this.activePhoneCount = 0;
         this.wsPort = 7891; // Default WS port per canonical contract
         
@@ -23,11 +28,15 @@ class BridgeClient {
         await this.fetchDiagnostics();
         this.connect();
 
-        // Refresh pairing status and diagnostics every 4 seconds
+        // Periodic pairing status and diagnostics sync (reduced to 15s when idle; WebSocket pushes live updates)
         setInterval(async () => {
-            await this.fetchPairingStatus();
-            await this.fetchDiagnostics();
-        }, 4000);
+            if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+                await this.fetchPairingStatus();
+            }
+            if (window.WindowManager && window.WindowManager.windows && window.WindowManager.windows.has('settings')) {
+                await this.fetchDiagnostics();
+            }
+        }, 15000);
     }
 
     async fetchPairingStatus() {
@@ -36,6 +45,11 @@ class BridgeClient {
             if (res.ok) {
                 const data = await res.json();
                 this.localToken = data.local_token;
+                if (data.local_token) {
+                    try {
+                        localStorage.setItem('novaos_token', data.local_token);
+                    } catch (e) {}
+                }
                 this.updatePairingUi(data);
                 return data;
             }
@@ -201,6 +215,16 @@ class BridgeClient {
             } else {
                 this.isAuthenticated = false;
                 this.addHistory('system', `✕ Auth failed: ${message.error || 'Invalid token'}`, true);
+                if (!this._retryingAuth) {
+                    this._retryingAuth = true;
+                    setTimeout(async () => {
+                        const status = await this.fetchPairingStatus();
+                        if (status && status.local_token) {
+                            this.authenticate(status.local_token);
+                        }
+                        this._retryingAuth = false;
+                    }, 1500);
+                }
             }
         }
 
@@ -228,24 +252,125 @@ class BridgeClient {
             this.notifyCommandListeners(message);
 
             if (message.success) {
+                const isPhoneSource = message.client_device === 'phone' || message.target_device === 'phone' || message.source === 'phone';
                 const msgText = message.data?.message || 'Command executed';
                 const execTime = message.data?.execution_time_ms ? ` (${message.data.execution_time_ms}ms)` : '';
+
+                if (isPhoneSource) {
+                    if (window.WindowManager) {
+                        window.WindowManager.openApp('nova-voice');
+                        window.WindowManager.focusWindow('nova-voice');
+                    }
+                    const userCmd = message.data?.command || 'Voice command from phone';
+                    this.addHistory('user', `📱 ${userCmd}`);
+                }
+
                 this.addHistory('system', `✓ ${msgText}${execTime}`);
 
                 // Execute action
                 const action = message.data?.action;
                 if (action) {
-                    if (action.action === 'app.open' && action.target) {
-                        if (window.WindowManager) {
+                    if (action.action === 'file.open') {
+                        if (window.openFilePreview) {
+                            window.openFilePreview(action.url || action.path, action.filename, action.file_type);
+                        }
+                    } else if (action.action === 'media.play' || action.action === 'file.play') {
+                        if (window.openFilePreview) {
+                            window.openFilePreview(action.url || action.path, action.filename, action.file_type || 'audio', { forcePlay: true });
+                        } else if (window.playAudioPlayback) {
+                            window.playAudioPlayback();
+                        }
+                    } else if (action.action === 'media.pause') {
+                        if (window.pauseAudioPlayback) {
+                            window.pauseAudioPlayback();
+                        }
+                    } else if (action.action === 'media.resume') {
+                        if (window.playAudioPlayback) {
+                            window.playAudioPlayback();
+                        }
+                    } else if (action.action === 'app.open' && action.target) {
+                        if (action.target === 'browser') {
+                            if (window.browserNavigate && (action.url || action.query)) {
+                                window.browserNavigate(action.url || action.query, action.display_url);
+                            } else if (window.WindowManager) {
+                                window.WindowManager.openApp('browser');
+                            }
+                        } else if (window.WindowManager) {
                             window.WindowManager.openApp(action.target);
+                        }
+                    } else if (action.action === 'app.close' && action.target) {
+                        if (window.WindowManager) {
+                            window.WindowManager.closeWindow(action.target);
+                        }
+                    } else if (action.action && action.action.startsWith('workspace.')) {
+                        if (window.WindowManager) {
+                            window.WindowManager.openApp('workspace');
+                        }
+                        if (window.Workspace) {
+                            if (action.action === 'workspace.add_task') {
+                                window.Workspace.switchTab('planner');
+                                window.Workspace.addTask(action.text, action.priority);
+                            } else if (action.action === 'workspace.complete_task') {
+                                window.Workspace.switchTab('planner');
+                                window.Workspace.completeTask(action.text);
+                            } else if (action.action === 'workspace.delete_task') {
+                                window.Workspace.switchTab('planner');
+                                window.Workspace.deleteTask(action.text);
+                            } else if (action.action === 'workspace.create_doc') {
+                                window.Workspace.switchTab('documents');
+                                window.Workspace.createDoc(action.title);
+                            } else if (action.action === 'workspace.open_doc') {
+                                window.Workspace.switchTab('documents');
+                                window.Workspace.openDoc(action.title);
+                            } else if (action.action === 'workspace.create_sheet') {
+                                window.Workspace.switchTab('sheets');
+                                window.Workspace.createSheet(action.title);
+                            } else if (action.action === 'workspace.set_cell') {
+                                window.Workspace.switchTab('sheets');
+                                window.Workspace.setCellValue(action.cell, action.value);
+                            } else if (action.action === 'workspace.switch_tab') {
+                                window.Workspace.switchTab(action.tab);
+                            }
+                        }
+                    } else if (action.action === 'file.processed') {
+                        // Complete conversion animation in web app
+                        if (window.finishConversionAnimation) {
+                            window.finishConversionAnimation({
+                                success: true,
+                                ...action
+                            });
+                        }
+                        // Refresh file/folder UI so the generated result immediately appears in Output
+                        if (window.loadFilesList) {
+                            window.loadFilesList().then(() => {
+                                if (window.navigateToFolder) {
+                                    window.navigateToFolder('output');
+                                }
+                            });
+                        }
+                        if (window.WindowManager && window.WindowManager.windows.has('files')) {
+                            window.WindowManager.focusWindow('files');
+                        }
+                    } else if (action.action === 'file.deleted') {
+                        if (window.loadFilesList) {
+                            window.loadFilesList();
                         }
                     } else if (action.action === 'system.screenshot') {
                         this.triggerScreenshotFlash();
+                    } else if (action.action && action.action.startsWith('phone.')) {
+                        this.addHistory('system', `📱 [Phone] ${action.action.replace('phone.', '').toUpperCase()} executed successfully`);
                     }
                 }
             } else {
                 const errText = message.data?.message || message.error || 'Command failed';
                 this.addHistory('system', `✕ ${errText}`, true);
+                if (window.finishConversionAnimation) {
+                    window.finishConversionAnimation({
+                        success: false,
+                        error: errText,
+                        ...message.data
+                    });
+                }
             }
         }
     }
@@ -296,6 +421,22 @@ class BridgeClient {
 
         this.socket.send(JSON.stringify(envelope));
         this.addHistory('user', commandText);
+
+        // Detect conversion commands to trigger smooth conversion animation immediately
+        const convMatch = (commandText || '').match(/\b(?:convert|transform|turn|change|make)\s+(.+?)\s+(?:to|into|as|a|an)\s+([a-zA-Z0-9]+)\b/i);
+        if (convMatch) {
+            const rawSrc = convMatch[1].trim();
+            const tgt = convMatch[2].trim().toUpperCase();
+            let src = 'FILE';
+            if (rawSrc.includes('.')) {
+                src = rawSrc.split('.').pop().trim().toUpperCase();
+            } else if (rawSrc.toLowerCase().includes('dot ')) {
+                src = rawSrc.toLowerCase().split('dot ').pop().trim().toUpperCase();
+            }
+            if (window.showConversionAnimation) {
+                window.showConversionAnimation(src, tgt, rawSrc);
+            }
+        }
 
         if (callback) {
             const listener = (res) => {

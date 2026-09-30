@@ -3,15 +3,413 @@
  * File uploads, command input, Files app rendering, and Settings telemetry.
  */
 
+// Speech-to-Text: Hands-free "Say task, then say OK to run" flow
+const CONFIRM_PHRASES = [
+    'ok', 'okay', 'okk', 'okey',
+    'ok do it', 'okay do it', 'ok execute it', 'ok please',
+    'yes ok', 'yes okay',
+    'ओके', 'ठीक है', 'ओके कर दो', 'ठीक है कर दो', 'ok kar do'
+];
+window.CONFIRM_PHRASES = CONFIRM_PHRASES;
+
+function normaliseVoiceText(text) {
+    if (!text) return '';
+    return text
+        .toLowerCase()
+        .replace(/[.,!?;:]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+window.normaliseVoiceText = normaliseVoiceText;
+
+function buildConfirmationRegex(phrases) {
+    const sorted = [...phrases].sort((a, b) => b.length - a.length);
+    const escaped = sorted.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    return new RegExp(`(?:^|\\s)(${escaped.join('|')})$`, 'i');
+}
+window.buildConfirmationRegex = buildConfirmationRegex;
+
+const CONFIRM_REGEX = buildConfirmationRegex(CONFIRM_PHRASES);
+
+function parseVoiceTurn(rawTurn) {
+    const clean = normaliseVoiceText(rawTurn);
+    if (!clean) return { type: 'empty', task: '', confirm: '' };
+
+    const match = clean.match(CONFIRM_REGEX);
+    if (!match) {
+        return { type: 'C', task: clean, confirm: '' };
+    }
+
+    const confirmPhrase = match[1];
+    const taskPart = clean.slice(0, match.index).trim();
+
+    if (!taskPart) {
+        return { type: 'A', task: '', confirm: confirmPhrase };
+    } else {
+        return { type: 'B', task: taskPart, confirm: confirmPhrase };
+    }
+}
+window.parseVoiceTurn = parseVoiceTurn;
+
+// Global File and Extension Normalization Layer for Speech Commands
+const CORE_FILE_EXTENSIONS_JS = new Set([
+    "jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "ico", "tif", "tiff", "heic",
+    "pdf", "txt", "doc", "docx", "xls", "xlsx", "csv", "ppt", "pptx", "rtf", "md",
+    "json", "xml", "sql", "yml", "yaml", "toml", "ini", "conf", "log",
+    "zip", "rar", "7z", "tar", "gz",
+    "mp3", "wav", "ogg", "m4a", "flac", "aac",
+    "mp4", "avi", "mkv", "mov", "webm", "m4v", "3gp",
+    "exe", "apk", "bat", "sh",
+    "py", "java", "js", "ts", "html", "css", "cpp", "c", "h"
+]);
+
+const NON_STEM_WORDS_JS = new Set([
+    "to", "into", "as", "from", "of", "in", "on", "at", "by", "for", "with",
+    "about", "between", "through", "over", "under", "above", "below", "and",
+    "or", "but", "nor", "yet", "so", "than", "then", "after", "before", "while",
+    "the", "a", "an", "this", "that", "these", "those",
+    "my", "your", "his", "her", "its", "our", "their", "me", "you", "him", "us", "them",
+    "is", "am", "are", "was", "were", "be", "been", "being", "have", "has", "had",
+    "do", "does", "did", "will", "would", "shall", "should", "can", "could", "may", "might", "must",
+    "open", "close", "show", "view", "display", "preview", "launch", "start", "exit", "quit",
+    "delete", "remove", "erase", "trash", "convert", "change", "turn", "transform", "make",
+    "switch", "compress", "shrink", "optimize", "reduce", "extract", "merge", "combine",
+    "split", "resize", "watermark", "add", "set", "get", "put", "run", "stop", "send",
+    "upload", "download", "copy", "move", "rename", "save", "load", "find", "search",
+    "please", "nova", "hey", "hi", "hello", "thanks", "thank", "now", "again", "also",
+    "just", "only", "very", "too", "well", "okay", "ok", "right"
+]);
+
+function normalizeSpokenFileCommand(text) {
+    if (!text) return '';
+    let s = text.trim();
+
+    // Protect URLs, emails, decimals
+    const placeholders = {};
+    let phIdx = 0;
+    const makePh = (val) => {
+        const token = `__PH_${phIdx++}__`;
+        placeholders[token] = val;
+        return token;
+    };
+
+    s = s.replace(/https?:\/\/[^\s]+/g, makePh);
+    s = s.replace(/\b[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+\b/g, makePh);
+    s = s.replace(/\b\d+\.\d+\b/g, makePh);
+
+    // Spelled out extension letters
+    const spelledOut = [
+        [/\b[jJ]\s+[pP]\s+[eE]\s+[gG]\b/g, 'jpeg'],
+        [/\b[dD]\s+[oO]\s+[cC]\s+[xX]\b/g, 'docx'],
+        [/\b[xX]\s+[lL]\s+[sS]\s+[xX]\b/g, 'xlsx'],
+        [/\b[wW]\s+[eE]\s+[bB]\s+[pP]\b/g, 'webp'],
+        [/\b[hH]\s+[tT]\s+[mM]\s+[lL]\b/g, 'html'],
+        [/\b[jJ]\s+[sS]\s+[oO]\s+[nN]\b/g, 'json'],
+        [/\b[jJ]\s+[pP]\s+[gG]\b/g, 'jpg'],
+        [/\b[pP]\s+[nN]\s+[gG]\b/g, 'png'],
+        [/\b[pP]\s+[dD]\s+[fF]\b/g, 'pdf'],
+        [/\b[tT]\s+[xX]\s+[tT]\b/g, 'txt'],
+        [/\b[cC]\s+[sS]\s+[vV]\b/g, 'csv'],
+        [/\b[mM]\s+[pP]\s*4\b/g, 'mp4'],
+        [/\b[mM]\s+[pP]\s*3\b/g, 'mp3'],
+        [/\b[wW]\s+[aA]\s+[vV]\b/g, 'wav'],
+        [/\b[pP]\s+[yY]\b/g, 'py'],
+        [/\b[jJ]\s+[sS]\b/g, 'js'],
+        [/\b[tT]\s+[sS]\b/g, 'ts'],
+        [/\b[mM]\s+[dD]\b/g, 'md'],
+        [/\b[cC]\s+[sS]\s+[sS]\b/g, 'css']
+    ];
+    for (const [re, repl] of spelledOut) {
+        s = s.replace(re, repl);
+    }
+
+    // Spoken separator words: dot, point, period
+    s = s.replace(/(?<=[a-zA-Z0-9_\-])\s*(?:dot|point|period)\s*(?=[a-zA-Z0-9_\-])/gi, '.');
+    s = s.replace(/\s+(?:dot|point|period)\s+([a-zA-Z0-9]+)/gi, '.$1');
+    s = s.replace(/\s+(?:dot|point|period)\b/gi, '.');
+    s = s.replace(/\s*\.\s*/g, '.');
+
+    // Reconstruct missing dot: <stem> <ext>
+    const tokens = s.split(' ');
+    const reconstructed = [];
+    let i = 0;
+    while (i < tokens.length) {
+        const tok = tokens[i];
+        if (i + 1 < tokens.length) {
+            const nextTok = tokens[i + 1];
+            const nextClean = nextTok.replace(/[^\w]/g, '').toLowerCase();
+            if (tok && CORE_FILE_EXTENSIONS_JS.has(nextClean)) {
+                const tokClean = tok.replace(/^[^\w]+|[^\w]+$/g, '').toLowerCase();
+                const isNonStem = NON_STEM_WORDS_JS.has(tokClean);
+                const alreadyHasExt = tokClean.endsWith('.' + nextClean) || tok.endsWith('.');
+                let singleLetterValid = true;
+                if (nextClean === 'c' || nextClean === 'h') {
+                    singleLetterValid = ['main', 'code', 'script', 'test', 'header', 'utils', 'file', 'app'].includes(tokClean);
+                }
+                if (!isNonStem && !alreadyHasExt && singleLetterValid && tokClean.length > 0) {
+                    const trailingPunct = nextTok.startsWith(nextClean) ? nextTok.slice(nextClean.length) : '';
+                    reconstructed.push(`${tok}.${nextClean}${trailingPunct}`);
+                    i += 2;
+                    continue;
+                }
+            }
+        }
+        reconstructed.push(tok);
+        i++;
+    }
+
+    s = reconstructed.join(' ');
+    s = s.replace(/\.{2,}/g, '.');
+
+    // Restore placeholders
+    for (const [token, original] of Object.entries(placeholders)) {
+        s = s.replace(token, original);
+    }
+
+    return s.replace(/\s+/g, ' ').trim();
+}
+window.normalizeSpokenFileCommand = normalizeSpokenFileCommand;
+
+// Voice conversation state
+let pendingText = '';
+let isExecuting = false;
+let executingTimer = null;
+
+function updateVoiceStatusUi() {
+    const orb = document.getElementById('nova-orb');
+    const status = document.getElementById('nova-status');
+    const micBtn = document.getElementById('nova-mic-btn');
+    const speech = window.SpeechService;
+
+    if (!speech || !speech.isListening()) {
+        return;
+    }
+
+    if (isExecuting) {
+        if (status) status.textContent = 'EXECUTING COMMAND…';
+        if (orb) {
+            orb.classList.remove('listening');
+            orb.classList.add('thinking');
+        }
+        if (micBtn) {
+            micBtn.style.borderColor = 'var(--accent-blue)';
+            micBtn.style.color = 'var(--accent-blue)';
+        }
+    } else if (pendingText) {
+        if (status) status.textContent = "SAY 'OK' TO RUN";
+        if (orb) {
+            orb.classList.add('listening');
+            orb.classList.remove('thinking');
+        }
+        if (micBtn) {
+            micBtn.style.borderColor = 'var(--accent-green)';
+            micBtn.style.color = 'var(--accent-green)';
+        }
+    } else {
+        if (status) status.textContent = 'LISTENING…';
+        if (orb) {
+            orb.classList.add('listening');
+            orb.classList.remove('thinking');
+        }
+        if (micBtn) {
+            micBtn.style.borderColor = 'var(--accent-green)';
+            micBtn.style.color = 'var(--accent-green)';
+        }
+    }
+}
+
+function executeVoiceCommand(commandText) {
+    if (!commandText || !commandText.trim()) return;
+    const cleanCmd = normalizeSpokenFileCommand(commandText.trim());
+
+    // 1. Voice confirmation feedback
+    if (window.BridgeClient) {
+        window.BridgeClient.addHistory('system', '✓ Confirmed by voice');
+    }
+
+    // 2. Set executing guard to prevent late audio from leaking
+    isExecuting = true;
+    updateVoiceStatusUi();
+
+    if (executingTimer) clearTimeout(executingTimer);
+    executingTimer = setTimeout(() => {
+        isExecuting = false;
+        executingTimer = null;
+        updateVoiceStatusUi();
+    }, 10000); // 10s safety timeout to ensure UI is never stuck
+
+    // 3. Send command over bridge
+    if (window.BridgeClient) {
+        window.BridgeClient.sendCommand(cleanCmd, () => {
+            if (executingTimer) {
+                clearTimeout(executingTimer);
+                executingTimer = null;
+            }
+            isExecuting = false;
+            updateVoiceStatusUi();
+        });
+    } else {
+        isExecuting = false;
+        updateVoiceStatusUi();
+    }
+}
+
+window.toggleNovaVoiceMic = async function() {
+    const speech = window.SpeechService;
+    if (!speech) {
+        console.error('[Nova Voice] SpeechService not found');
+        return;
+    }
+
+    if (speech.isListening() || speech.state === 'requesting_mic') {
+        await speech.stop();
+        return;
+    }
+
+    if (speech.state === 'processing') {
+        return;
+    }
+
+    // Starting new session: reset state
+    pendingText = '';
+    isExecuting = false;
+    if (executingTimer) {
+        clearTimeout(executingTimer);
+        executingTimer = null;
+    }
+
+    // Lazily re-bind callbacks on each activation to safely handle window reopening
+    speech.onPartial = (partial) => {
+        if (isExecuting) return;
+        const input = document.getElementById('nova-cli-input');
+        if (input) {
+            const cleanPartial = normaliseVoiceText(partial);
+            const displayVal = pendingText
+                ? (cleanPartial ? `${pendingText} ${cleanPartial}` : pendingText)
+                : cleanPartial;
+            input.value = displayVal;
+        }
+    };
+
+    speech.onFinal = (rawTurn) => {
+        if (isExecuting) return;
+
+        const parsed = parseVoiceTurn(rawTurn);
+        if (parsed.type === 'empty') return;
+
+        const input = document.getElementById('nova-cli-input');
+
+        if (parsed.type === 'A') {
+            // Case A: The turn is only a confirmation word (e.g. "ok", "okay.").
+            // If pendingText is non-empty, send it. If empty, ignore turn and do not append "ok".
+            if (pendingText) {
+                const commandToSend = pendingText;
+                pendingText = '';
+                if (input) input.value = '';
+                executeVoiceCommand(commandToSend);
+            }
+        } else if (parsed.type === 'B') {
+            // Case B: The turn is a task followed by a confirmation at the very end (e.g. "open the terminal okay").
+            // Strip the trailing confirmation, append the rest to pendingText, then send.
+            const commandToSend = pendingText ? `${pendingText} ${parsed.task}` : parsed.task;
+            pendingText = '';
+            if (input) input.value = '';
+            executeVoiceCommand(commandToSend);
+        } else if (parsed.type === 'C') {
+            // Case C: Anything else. Append turn to pendingText and wait for "ok".
+            pendingText = pendingText ? `${pendingText} ${parsed.task}` : parsed.task;
+            if (input) input.value = pendingText;
+            updateVoiceStatusUi();
+        }
+    };
+
+    speech.onStateChange = (state) => {
+        const orb = document.getElementById('nova-orb');
+        const status = document.getElementById('nova-status');
+        const micBtn = document.getElementById('nova-mic-btn');
+
+        if (state === 'requesting_mic') {
+            if (status) status.textContent = 'REQUESTING MICROPHONE…';
+            if (orb) {
+                orb.classList.remove('listening', 'thinking');
+            }
+            if (micBtn) {
+                micBtn.style.borderColor = 'var(--accent-warning)';
+                micBtn.style.color = 'var(--accent-warning)';
+            }
+        } else if (state === 'listening') {
+            updateVoiceStatusUi();
+        } else if (state === 'processing') {
+            if (status) status.textContent = 'FINISHING TRANSCRIPT…';
+            if (orb) {
+                orb.classList.remove('listening');
+                orb.classList.add('thinking');
+            }
+            if (micBtn) {
+                micBtn.style.borderColor = 'var(--accent-blue)';
+                micBtn.style.color = 'var(--accent-blue)';
+            }
+        } else if (state === 'stopped') {
+            if (status) status.textContent = 'STANDBY — READY FOR COMMANDS';
+            if (orb) {
+                orb.classList.remove('listening', 'thinking');
+            }
+            if (micBtn) {
+                micBtn.style.borderColor = 'var(--border-3)';
+                micBtn.style.color = 'var(--text-muted)';
+            }
+
+            // If user taps the mic to stop while text is pending:
+            // Fill input and leave it for manual SEND, and don't auto-send.
+            const input = document.getElementById('nova-cli-input');
+            if (input && pendingText) {
+                input.value = pendingText;
+            }
+            isExecuting = false;
+            if (executingTimer) {
+                clearTimeout(executingTimer);
+                executingTimer = null;
+            }
+        } else if (state === 'error') {
+            if (orb) {
+                orb.classList.remove('listening', 'thinking');
+            }
+            if (micBtn) {
+                micBtn.style.borderColor = 'var(--accent-error)';
+                micBtn.style.color = 'var(--accent-error)';
+            }
+            isExecuting = false;
+            if (executingTimer) {
+                clearTimeout(executingTimer);
+                executingTimer = null;
+            }
+        }
+    };
+
+    speech.onError = (errorMessage) => {
+        const status = document.getElementById('nova-status');
+        if (status) {
+            status.textContent = errorMessage;
+        }
+        if (window.BridgeClient) {
+            window.BridgeClient.addHistory('system', `✕ ${errorMessage}`, true);
+        }
+    };
+
+    await speech.start();
+};
+
 // Command sending from Nova Voice input field
 window.sendMockCommand = function() {
     const input = document.getElementById('nova-cli-input');
     if (input && input.value.trim() !== '') {
         const cmd = input.value.trim();
+        pendingText = ''; // Clear voice pending state on manual send
         if (window.BridgeClient) {
             window.BridgeClient.sendCommand(cmd);
         }
         input.value = '';
+        updateVoiceStatusUi();
     }
 };
 
@@ -34,15 +432,27 @@ window.handleFileUpload = async function(event) {
     const formData = new FormData();
     formData.append('file', file);
 
-    const token = window.BridgeClient?.localToken || '';
+    let token = window.BridgeClient?.localToken || localStorage.getItem('novaos_token') || '';
     try {
-        const response = await fetch('/upload/file', {
+        let response = await fetch('/upload/file', {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`
             },
             body: formData
         });
+
+        if ((response.status === 401 || response.status === 403) && window.BridgeClient) {
+            const status = await window.BridgeClient.fetchPairingStatus();
+            token = status?.local_token || '';
+            response = await fetch('/upload/file', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                body: formData
+            });
+        }
 
         if (response.ok) {
             const result = await response.json();
@@ -107,6 +517,8 @@ window.navigateToFolder = function(folder) {
         document.getElementById('files-nav-mobile')?.classList.add('active');
     } else if (folder === 'photos') {
         document.getElementById('files-nav-photos')?.classList.add('active');
+    } else if (folder === 'output') {
+        document.getElementById('files-nav-output')?.classList.add('active');
     }
 
     window.updateBreadcrumbs();
@@ -125,6 +537,13 @@ window.updateBreadcrumbs = function() {
             <button class="files-breadcrumb-btn" onclick="window.navigateToFolder('mobile')">mobile</button>
             <span style="color: var(--text-muted);">/</span>
             <button class="files-breadcrumb-btn current" onclick="window.navigateToFolder('photos')">photos</button>
+        `;
+    } else if (window._currentFolder === 'output') {
+        bcContainer.innerHTML = `
+            <span style="color: var(--text-muted);">/</span>
+            <button class="files-breadcrumb-btn" onclick="window.navigateToFolder('mobile')">files</button>
+            <span style="color: var(--text-muted);">/</span>
+            <button class="files-breadcrumb-btn current" onclick="window.navigateToFolder('output')">output</button>
         `;
     } else if (window._currentFolder === 'all') {
         bcContainer.innerHTML = `
@@ -174,15 +593,18 @@ window.loadFilesList = async function() {
 
 window.updateFolderBadges = function() {
     const allFiles = window._cachedFiles || [];
-    const photos = allFiles.filter(f => f.type === 'photo' || f.path.includes('/photos/'));
-    const mobileFiles = allFiles.filter(f => f.type !== 'photo' && !f.path.includes('/photos/'));
+    const photos = allFiles.filter(f => f.type === 'photo' || f.folder === 'photos' || (f.path && f.path.includes('/photos/')));
+    const outputFiles = allFiles.filter(f => f.type === 'output' || f.folder === 'output' || (f.path && f.path.includes('/output/')));
+    const mobileFiles = allFiles.filter(f => f.type !== 'photo' && f.type !== 'output' && f.folder !== 'photos' && f.folder !== 'output' && !f.path.includes('/photos/') && !f.path.includes('/output/'));
 
     const bMobile = document.getElementById('badge-mobile-count');
     const bPhotos = document.getElementById('badge-photos-count');
+    const bOutput = document.getElementById('badge-output-count');
     const bAll = document.getElementById('badge-all-count');
 
-    if (bMobile) bMobile.textContent = mobileFiles.length + (photos.length > 0 ? 1 : 0);
+    if (bMobile) bMobile.textContent = mobileFiles.length + (photos.length > 0 ? 1 : 0) + (outputFiles.length > 0 ? 1 : 0);
     if (bPhotos) bPhotos.textContent = photos.length;
+    if (bOutput) bOutput.textContent = outputFiles.length;
     if (bAll) bAll.textContent = allFiles.length;
 };
 
@@ -206,8 +628,9 @@ window.renderFilesTable = function() {
     if (!container) return;
 
     const allFiles = window._cachedFiles || [];
-    const photos = allFiles.filter(f => f.type === 'photo' || f.path.includes('/photos/'));
-    const mobileDocs = allFiles.filter(f => f.type !== 'photo' && !f.path.includes('/photos/'));
+    const photos = allFiles.filter(f => f.type === 'photo' || f.folder === 'photos' || (f.path && f.path.includes('/photos/')));
+    const outputFiles = allFiles.filter(f => f.type === 'output' || f.folder === 'output' || (f.path && f.path.includes('/output/')));
+    const mobileDocs = allFiles.filter(f => f.type !== 'photo' && f.type !== 'output' && f.folder !== 'photos' && f.folder !== 'output' && !f.path.includes('/photos/') && !f.path.includes('/output/'));
 
     let displayRows = [];
 
@@ -215,13 +638,24 @@ window.renderFilesTable = function() {
         // Inside Photos subfolder
         displayRows.push({
             isFolder: true,
-            name: '.. (Parent Folder: mobile)',
+            name: '.. (Parent Folder: files)',
             type: 'folder-up',
             size_formatted: '--',
             modified: '--',
             onClick: "window.navigateToFolder('mobile')"
         });
         photos.forEach(p => displayRows.push({ ...p, isFolder: false }));
+    } else if (window._currentFolder === 'output') {
+        // Inside Output subfolder
+        displayRows.push({
+            isFolder: true,
+            name: '.. (Parent Folder: files)',
+            type: 'folder-up',
+            size_formatted: '--',
+            modified: '--',
+            onClick: "window.navigateToFolder('mobile')"
+        });
+        outputFiles.forEach(o => displayRows.push({ ...o, isFolder: false }));
     } else if (window._currentFolder === 'all') {
         // Quick view: All
         allFiles.forEach(f => displayRows.push({ ...f, isFolder: false }));
@@ -238,6 +672,14 @@ window.renderFilesTable = function() {
             modified: photos.length > 0 ? photos[0].modified : '--',
             onClick: "window.navigateToFolder('photos')"
         });
+        displayRows.push({
+            isFolder: true,
+            name: 'output',
+            type: 'folder',
+            size_formatted: `${outputFiles.length} item${outputFiles.length === 1 ? '' : 's'}`,
+            modified: outputFiles.length > 0 ? outputFiles[0].modified : '--',
+            onClick: "window.navigateToFolder('output')"
+        });
         mobileDocs.forEach(d => displayRows.push({ ...d, isFolder: false }));
     }
 
@@ -247,11 +689,14 @@ window.renderFilesTable = function() {
     }
 
     if (displayRows.length === 0) {
+        const emptySubtext = window._currentFolder === 'output'
+            ? "Process files with voice commands like 'convert test.png to jpg' or 'compress image.png'."
+            : "Upload files from your phone or click \"Upload File\" above.";
         container.innerHTML = `
             <div style="text-align: center; padding: 50px 20px; color: var(--text-muted);">
                 <div style="font-size: 36px; margin-bottom: 12px; opacity: 0.6;">📁</div>
                 <div style="font-size: 14px; font-weight: 500; color: var(--text-secondary); margin-bottom: 6px;">Folder is empty</div>
-                <div style="font-size: 12px;">Upload files from your phone or click "Upload File" above.</div>
+                <div style="font-size: 12px;">${emptySubtext}</div>
             </div>
         `;
         return;
@@ -261,10 +706,11 @@ window.renderFilesTable = function() {
         <table class="files-table">
             <thead>
                 <tr>
-                    <th style="width: 48%;">Name</th>
+                    <th style="width: 44%;">Name</th>
                     <th style="width: 14%;">Type</th>
                     <th style="width: 14%;">Size</th>
-                    <th style="width: 24%;">Uploaded At</th>
+                    <th style="width: 20%;">Uploaded At</th>
+                    <th style="width: 8%; text-align: center;">Action</th>
                 </tr>
             </thead>
             <tbody>
@@ -284,22 +730,26 @@ window.renderFilesTable = function() {
                     <td><span class="badge-tag folder">Folder</span></td>
                     <td style="font-family: var(--font-mono); font-size: 12px; color: var(--text-muted);">${r.size_formatted}</td>
                     <td style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);">${r.modified}</td>
+                    <td style="text-align: center; color: var(--text-dark); font-size: 11px;">--</td>
                 </tr>
             `;
         } else {
-            const icon = r.type === 'photo' ? '🖼️' : '📄';
-            const badgeClass = r.type === 'photo' ? 'badge-tag photo' : 'badge-tag file';
+            const icon = r.type === 'photo' ? '🖼️' : (r.type === 'output' ? '📤' : '📄');
+            const badgeClass = r.type === 'photo' ? 'badge-tag photo' : (r.type === 'output' ? 'badge-tag output' : 'badge-tag file');
             html += `
-                <tr>
+                <tr style="cursor: pointer;" onclick="if(event.target.tagName !== 'A' && !event.target.closest('.file-delete-btn')) window.openFilePreview('${r.path}', '${escapeHtml(r.name)}', '${r.type}')">
                     <td>
                         <div class="file-row-name">
                             <span>${icon}</span>
-                            <a href="${r.path}" target="_blank" style="color: var(--text-primary); text-decoration: none; font-weight: 500;" title="Click to open file">${escapeHtml(r.name)}</a>
+                            <a href="javascript:void(0)" onclick="event.stopPropagation(); window.openFilePreview('${r.path}', '${escapeHtml(r.name)}', '${r.type}')" style="color: var(--text-primary); text-decoration: underline; text-underline-offset: 3px; font-weight: 500;" title="Click to view inside Nova OS">${escapeHtml(r.name)}</a>
                         </div>
                     </td>
                     <td><span class="${badgeClass}">${r.type}</span></td>
                     <td style="font-family: var(--font-mono); font-size: 12px;">${r.size_formatted}</td>
                     <td style="font-family: var(--font-mono); font-size: 11px; color: var(--text-muted);">${r.modified}</td>
+                    <td style="text-align: center;" onclick="event.stopPropagation()">
+                        <button class="file-delete-btn" onclick="event.stopPropagation(); window.deleteFile('${r.path}', '${escapeHtml(r.name)}')" title="Delete ${escapeHtml(r.name)}">🗑️</button>
+                    </td>
                 </tr>
             `;
         }
@@ -307,6 +757,183 @@ window.renderFilesTable = function() {
 
     html += `</tbody></table>`;
     container.innerHTML = html;
+};
+
+// Delete single file with confirmation and refresh
+window.deleteFile = async function(filePath, fileName) {
+    if (!filePath) return;
+    const name = fileName || filePath.split('/').pop();
+    const confirmed = window.confirm(`Are you sure you want to delete "${name}"?`);
+    if (!confirmed) return;
+
+    try {
+        const res = await fetch(`/files?path=${encodeURIComponent(filePath)}`, {
+            method: 'DELETE'
+        });
+        if (res.ok) {
+            const data = await res.json();
+            if (window.BridgeClient) {
+                window.BridgeClient.addHistory('system', `✓ Deleted file: ${name}`);
+            }
+            // Refresh file list and badge counts immediately
+            await window.loadFilesList();
+        } else {
+            const err = await res.json().catch(() => ({ detail: 'Failed to delete' }));
+            alert(`Could not delete file: ${err.detail || err.message || 'Unknown error'}`);
+        }
+    } catch (e) {
+        alert('Network error deleting file: ' + e);
+    }
+};
+
+// File Conversion Animation Controller (HTML/CSS/JS)
+window._activeConversionTimer = null;
+window._activeConversionPendingFile = null;
+
+window.showConversionAnimation = function(sourceFormat, targetFormat, filename) {
+    const overlay = document.getElementById('conversion-overlay');
+    if (!overlay) return;
+
+    if (window._activeConversionTimer) {
+        clearTimeout(window._activeConversionTimer);
+        window._activeConversionTimer = null;
+    }
+
+    const card = document.getElementById('conversion-card');
+    const filenameEl = document.getElementById('conversion-filename');
+    const srcPill = document.getElementById('conv-source-pill');
+    const tgtPill = document.getElementById('conv-target-pill');
+    const stateLabel = document.getElementById('conv-state-label');
+    const statusIcon = document.getElementById('conv-status-icon');
+    const canonicalSrc = document.getElementById('conv-canonical-src');
+    const canonicalMid = document.getElementById('conv-canonical-mid');
+    const canonicalTgt = document.getElementById('conv-canonical-tgt');
+    const progressBar = document.getElementById('conv-progress-bar');
+    const statusMsg = document.getElementById('conv-status-msg');
+    const actionsEl = document.getElementById('conv-actions');
+
+    const src = (sourceFormat || 'FILE').toUpperCase();
+    const tgt = (targetFormat || 'FORMAT').toUpperCase();
+    const fn = filename || 'file';
+
+    window._activeConversionPendingFile = {
+        sourceFormat: src,
+        targetFormat: tgt,
+        filename: fn,
+        outputFile: null,
+        outputPath: null
+    };
+
+    if (card) card.classList.remove('success', 'error');
+    if (filenameEl) filenameEl.textContent = fn;
+    if (srcPill) srcPill.textContent = src;
+    if (tgtPill) tgtPill.textContent = tgt;
+    if (canonicalSrc) canonicalSrc.textContent = src;
+    if (canonicalMid) canonicalMid.textContent = 'Converting';
+    if (canonicalTgt) canonicalTgt.textContent = tgt;
+    if (stateLabel) stateLabel.textContent = 'Converting';
+    if (statusIcon) {
+        statusIcon.textContent = '🔄';
+        statusIcon.className = 'converter-icon spinner';
+    }
+    if (progressBar) {
+        progressBar.style.width = '35%';
+        setTimeout(() => {
+            if (progressBar && overlay.classList.contains('active') && !card?.classList.contains('success')) {
+                progressBar.style.width = '70%';
+            }
+        }, 500);
+    }
+    if (statusMsg) statusMsg.textContent = `Converting ${src} → ${tgt}...`;
+    if (actionsEl) actionsEl.style.display = 'none';
+
+    overlay.classList.remove('closing');
+    overlay.classList.add('active');
+};
+
+window.finishConversionAnimation = function(result) {
+    const overlay = document.getElementById('conversion-overlay');
+    if (!overlay || !overlay.classList.contains('active')) return;
+
+    const card = document.getElementById('conversion-card');
+    const stateLabel = document.getElementById('conv-state-label');
+    const statusIcon = document.getElementById('conv-status-icon');
+    const canonicalMid = document.getElementById('conv-canonical-mid');
+    const progressBar = document.getElementById('conv-progress-bar');
+    const statusMsg = document.getElementById('conv-status-msg');
+    const actionsEl = document.getElementById('conv-actions');
+
+    const isSuccess = result && result.status !== 'failed' && result.error == null;
+
+    if (isSuccess) {
+        if (card) {
+            card.classList.remove('error');
+            card.classList.add('success');
+        }
+        if (stateLabel) stateLabel.textContent = 'Converted!';
+        if (statusIcon) {
+            statusIcon.textContent = '✓';
+            statusIcon.className = 'converter-icon';
+        }
+        if (canonicalMid) canonicalMid.textContent = 'Converted';
+        if (progressBar) progressBar.style.width = '100%';
+
+        const outName = result.output_file || (result.action && result.action.output_file) || 'converted file';
+        const outPath = result.path || (result.action && result.action.path) || `/uploads/files/output/${outName}`;
+
+        if (window._activeConversionPendingFile) {
+            window._activeConversionPendingFile.outputFile = outName;
+            window._activeConversionPendingFile.outputPath = outPath;
+        }
+
+        if (statusMsg) {
+            statusMsg.textContent = `✓ Output ready: ${outName}`;
+        }
+        if (actionsEl) actionsEl.style.display = 'flex';
+
+        // Automatically remove/finish the animation after conversion result is available
+        window._activeConversionTimer = setTimeout(() => {
+            window.hideConversionAnimation();
+        }, 1800);
+    } else {
+        if (card) {
+            card.classList.remove('success');
+            card.classList.add('error');
+        }
+        if (stateLabel) stateLabel.textContent = 'Failed';
+        if (statusIcon) {
+            statusIcon.textContent = '✕';
+            statusIcon.className = 'converter-icon';
+        }
+        if (canonicalMid) canonicalMid.textContent = 'Failed';
+        if (statusMsg) statusMsg.textContent = result?.error || result?.message || 'Conversion failed';
+
+        window._activeConversionTimer = setTimeout(() => {
+            window.hideConversionAnimation();
+        }, 2200);
+    }
+};
+
+window.hideConversionAnimation = function() {
+    const overlay = document.getElementById('conversion-overlay');
+    if (!overlay) return;
+    overlay.classList.add('closing');
+    setTimeout(() => {
+        overlay.classList.remove('active', 'closing');
+        const card = document.getElementById('conversion-card');
+        if (card) card.classList.remove('success', 'error');
+    }, 400);
+};
+
+window.handleConversionPreviewClick = function() {
+    if (window._activeConversionPendingFile && window._activeConversionPendingFile.outputPath) {
+        const path = window._activeConversionPendingFile.outputPath;
+        const name = window._activeConversionPendingFile.outputFile || path.split('/').pop();
+        if (window.openFilePreview) {
+            window.openFilePreview(path, name);
+        }
+        window.hideConversionAnimation();
+    }
 };
 
 // Text Editor actions

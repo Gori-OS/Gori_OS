@@ -27,12 +27,6 @@ function updateCpu() {
     cpuEl.textContent = `CPU ${base + fluctuation}%`;
 }
 
-// Periodic polling for pairing PIN expiry countdown
-setInterval(() => {
-    if (window.BridgeClient) {
-        window.BridgeClient.fetchPairingStatus();
-    }
-}, 5000);
 
 setInterval(updateClock, 1000);
 setInterval(updateCpu, 3000);

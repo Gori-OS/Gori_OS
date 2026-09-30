@@ -37,10 +37,13 @@ Production Windows-side bridge server (FastAPI) and browser-based desktop enviro
 |   +--------------------------------------------------------------------------+   |
 |                                                                                  |
 |   Uploads Directory Structure:                                                   |
-|     Ai_voice/uploads/files/mobile/                                               |
-|     ├── <uploaded-documents-and-files>                                           |
-|     └── photos/                                                                  |
-|         └── <uploaded-photos>                                                    |
+|     Ai_voice/uploads/files/                                                      |
+|     ├── mobile/                                                                  |
+|     │   ├── <uploaded-documents-and-files>                                       |
+|     │   └── photos/                                                              |
+|     │       └── <uploaded-photos>                                                |
+|     └── output/                                                                  |
+|         └── <voice-processed-results-and-conversions>                            |
 +----------------------------------------------------------------------------------+
 ```
 
@@ -62,14 +65,27 @@ Production Windows-side bridge server (FastAPI) and browser-based desktop enviro
 ### 1. Install Dependencies
 
 ```bash
-pip install -r Ai_voice/requirements.txt
+pip install -r requirements.txt
 ```
 
-Required packages: `fastapi`, `uvicorn`, `websockets`, `pydantic`, `python-multipart`, `zeroconf`, `httpx`.
+Required packages: `fastapi`, `uvicorn`, `websockets`, `pydantic`, `python-multipart`, `zeroconf`, `httpx`, `assemblyai`, `python-dotenv`.
 
-### 2. Start the Server
+### 2. Configure AssemblyAI Voice Streaming (Optional but Recommended)
 
-From `Ai_voice/`:
+Copy the `.env.example` file to `.env` in the repository root and add your AssemblyAI API key:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env`:
+```env
+ASSEMBLYAI_API_KEY=your_assemblyai_api_key_here
+```
+
+### 3. Start the Server
+
+From the project root:
 
 ```bash
 python run_bridge.py
@@ -77,14 +93,13 @@ python run_bridge.py
 
 *(Or on Windows, simply double-click `start_bridge.bat` to automatically verify firewall rules and launch the bridge.)*
 
-
 The bridge server will automatically:
-1. Bind HTTP endpoints (including `/pair`, `/upload/*`, `/files`, and `/desktop`) to **port 7890**.
+1. Bind HTTP endpoints (including `/pair`, `/upload/*`, `/files`, `/token`, and `/desktop`) to **port 7890**.
 2. Launch the dedicated WebSocket server on **port 7891** at path `/ws`.
 3. Register mDNS / Zeroconf service `_winbridge._tcp.local.` on port 7890 broadcasting machine hostname and ports.
 4. Generate an active 6-digit pairing PIN with a 5-minute rolling TTL.
 
-### 3. Open the Nova OS Desktop
+### 4. Open the Nova OS Desktop
 
 Open your browser to:
 ```
@@ -92,6 +107,83 @@ http://localhost:7890/desktop
 ```
 
 ---
+
+## Voice (AssemblyAI Streaming)
+
+Nova Voice features real-time speech-to-text using AssemblyAI's streaming WebSocket v3 (`universal-3-6-pro`). Users can click the Nova Orb or microphone button, speak natural language commands, watch real-time transcription appear, and have finalized text dispatched directly through the Nova OS Command Service.
+
+### 1. Setup & API Key Configuration
+
+1. Get an API key from [AssemblyAI](https://www.assemblyai.com/).
+2. Copy `.env.example` to `.env` in the project root:
+   ```bash
+   cp .env.example .env
+   ```
+3. Set your key:
+   ```env
+   ASSEMBLYAI_API_KEY=your_api_key_here
+   ```
+4. **Security**: `.env` is listed in `.gitignore`. The master API key remains solely on the server and is never exposed to browser clients, JavaScript, HTML, network logs, or error responses.
+
+### 2. Architecture & Streaming Flow
+
+```
+[Browser: http://localhost:7890/desktop]
+       |
+       |  1. Click Nova Orb / Mic 🎙
+       |  2. GET /token (Bridge Server validates loopback or pairing bearer token)
+       v
+[FastAPI Bridge Server]
+       |
+       |  3. Calls RealTimeTranscriber(api_key=...).create_temporary_token(60s)
+       |  4. Returns single-use temp token with Cache-Control: no-store
+       v
+[Browser SpeechService]
+       |
+       |  5. Requests getUserMedia (16 kHz mono audio)
+       |  6. Opens wss://streaming.assemblyai.com/v3/ws?token=...&speech_model=universal-3-6-pro
+       |  7. Streams PCM 16-bit binary audio frames
+       v
+[AssemblyAI Streaming v3]
+       |
+       |  8. Emits 'Turn' messages (end_of_turn: false -> onPartial live updates)
+       |  9. Emits 'Turn' message  (end_of_turn: true  -> onFinal completed transcript)
+       v
+[Nova Voice UI]
+       |
+       | 10. Sends { type: "Terminate" }, awaits 'Termination' message, stops mic
+       | 11. Hands final text to window.BridgeClient.sendCommand(text)
+       v
+[CommandService]
+       |
+       | 12. Normalizes text (strips filler words/articles) & dispatches action
+       v
+[Nova OS Window Manager] (e.g. opens Terminal, Files, Settings, takes screenshot)
+```
+
+### 3. Speech-Friendly Command Normalisation
+
+Voice commands are handled gracefully by `CommandService.process`:
+- Strips leading filler words (`please`, `can you`, `could you`, `hey nova`).
+- Strips leading articles (`the`, `my`).
+- Examples:
+  - `"Please open the terminal."` -> Opens Terminal (`app.open / terminal`)
+  - `"Hey Nova, can you open my files?"` -> Opens Files (`app.open / files`)
+  - Existing typed commands (`open terminal`, `help`, `status`, `take screenshot`) remain 100% backwards compatible.
+
+### 4. Troubleshooting
+
+- **HTTP 500 on `/token`**:
+  `ASSEMBLYAI_API_KEY` is missing. Create `.env` in the root folder containing `run_bridge.py` and populate `ASSEMBLYAI_API_KEY`.
+- **HTTP 502 on `/token`**:
+  Server failed to contact AssemblyAI to create a streaming token. Verify internet connectivity and ensure your AssemblyAI account is active.
+- **HTTP 403 on `/token`**:
+  The request came from a non-loopback network IP without a valid mobile pairing session token. Only `localhost` / `127.0.0.1` or paired devices with a valid Bearer token can mint tokens.
+- **"Microphone access blocked: Browsers require a secure context"**:
+  Modern browsers enforce that `getUserMedia` is only available on `http://localhost` or HTTPS. Accessing the desktop from another LAN machine via raw HTTP (`http://192.168.x.x:7890/desktop`) will block microphone access. Access via `http://localhost:7890/desktop` on the host machine.
+- **Mic Permission Denied**:
+  If prompted, grant microphone permission in your browser for `http://localhost:7890`.
+
 
 ## Where the Pairing PIN is Displayed
 
@@ -216,10 +308,91 @@ http://localhost:7890/desktop
 | `open terminal` / `terminal` | `{"action": "app.open", "target": "terminal"}` | Opens Terminal |
 | `open editor` / `editor` | `{"action": "app.open", "target": "editor"}` | Opens Text Editor |
 | `open settings` / `settings` | `{"action": "app.open", "target": "settings"}` | Opens Settings |
+| `open workspace` / `workspace` | `{"action": "app.open", "target": "workspace"}` | Opens Workspace |
+| `close nova voice` | `{"action": "app.close", "target": "nova-voice"}` | Closes Nova Voice agent |
+| `close files` | `{"action": "app.close", "target": "files"}` | Closes File Manager |
+| `close terminal` | `{"action": "app.close", "target": "terminal"}` | Closes Terminal |
+| `close editor` | `{"action": "app.close", "target": "editor"}` | Closes Text Editor |
+| `close settings` | `{"action": "app.close", "target": "settings"}` | Closes Settings |
+| `close workspace` | `{"action": "app.close", "target": "workspace"}` | Closes Workspace |
 | `take screenshot` / `screenshot` | `{"action": "system.screenshot"}` | Triggers screenshot flash & stub |
 | `status` / `ping` | `{"action": "system.status"}` | Returns bridge system health |
 | `help` | `{"action": "system.help"}` | Lists supported commands |
 | *unrecognized* | `{"action": "unknown", "status": "failed"}` | Graceful fallback (never crashes) |
+
+---
+
+### 3. Voice-Controlled File Processing with Groq Intent Understanding & 38-Endpoint Registry
+
+Nova OS integrates **Groq-powered intent understanding** with a strict 38-endpoint task registry and robust speech-to-text filename normalization for utility file processing.
+
+> [!IMPORTANT]
+> **Strict Command Routing Boundary:** Groq is **ONLY** invoked for task/endpoint commands. Existing `open`, `close`, and system commands (`screenshot`, `status`, `help`) are parsed deterministically and are **NEVER** routed through Groq.
+> **No Invented Endpoints:** Every task is resolved strictly to one of the 38 endpoints in the registry. If no matching endpoint exists, a clear `"No endpoint available for this task"` error is returned without making an HTTP request.
+> **Authoritative Filenames:** Spoken filenames are normalized and matched case-insensitively against actual web app storage. If matched, the actual disk filename is authoritative and used for upload. If not found, a clear `"File not found"` error is returned without making an HTTP request.
+
+#### Available Task Endpoints Registry (38 Endpoints on `http://127.0.0.1:8000`)
+- **IMAGE**:
+  - `POST /jpg-to-png`, `POST /png-to-jpg`, `POST /webp-to-jpg`, `POST /jpg-to-webp`, `POST /png-to-webp`
+  - `POST /bmp-to-jpg`, `POST /bmp-to-png`, `POST /tiff-to-jpg`, `POST /tiff-to-png`, `POST /heic-to-jpg`, `POST /heic-to-png`
+  - `POST /compress-image`, `POST /add-watermark`
+- **PDF**:
+  - `POST /extract-images-from-pdf`, `POST /merge-pdfs`, `POST /split-pdf`, `POST /delete-pdf-pages`
+  - `POST /pdf-to-jpg`, `POST /pdf-to-png`, `POST /jpg-to-pdf`, `POST /png-to-pdf`, `POST /images-to-pdf`, `POST /compress-pdf`
+- **VIDEO**:
+  - `POST /compress-video`, `POST /video-to-gif`, `POST /gif-to-mp4`, `POST /add-audio-to-video`, `POST /replace-video-audio`
+- **AUDIO**:
+  - `POST /mp4-to-mp3`, `POST /mp4-to-wav`, `POST /wav-to-mp3`, `POST /mp3-to-wav`, `POST /m4a-to-mp3`, `POST /compress-audio`
+- **DATA**:
+  - `POST /json-to-csv`, `POST /csv-to-json`, `POST /csv-to-excel`, `POST /excel-to-csv`
+
+#### Speech-to-Text Normalization Rules
+Speech-to-text engines may transcribe filenames with "dot" or spelled-out letters. Nova OS normalizes these before matching:
+- `"dot"`, `"point"`, `"period"` $\rightarrow$ `"."`
+- `"P N G"` $\rightarrow$ `"png"`, `"P D F"` $\rightarrow$ `"pdf"`, `"J P G"` $\rightarrow$ `"jpg"`, `"J P E G"` $\rightarrow$ `"jpeg"`
+- `"W E B P"` $\rightarrow$ `"webp"`, `"M P 4"` $\rightarrow$ `"mp4"`, `"M P 3"` $\rightarrow$ `"mp3"`, `"W A V"` $\rightarrow$ `"wav"`
+- `"C S V"` $\rightarrow$ `"csv"`, `"J S O N"` $\rightarrow$ `"json"`, `"X L S X"` $\rightarrow$ `"xlsx"`
+- Full support for spaces, numbers, hyphens, underscores, and multiple dots (`my photo.jpg`, `report final.pdf`, `archive.tar.gz`).
+
+#### Examples & Endpoints
+| Spoken Natural Command | Normalized File & Authoritative Match | Resolved Endpoint | Result Saved in Output |
+| :--- | :--- | :--- | :--- |
+| `"convert intern21 dot pdf to png"` | `Intern21.pdf` (authoritative) | `POST /pdf-to-png` | `uploads/files/output/Intern21.png` |
+| `"convert image dot png to jpg"` | `image.png` | `POST /png-to-jpg` | `uploads/files/output/image.jpg` |
+| `"convert my photo dot jpg to webp"` | `my photo.jpg` | `POST /jpg-to-webp` | `uploads/files/output/my photo.webp` |
+| `"convert report final dot pdf to jpg"` | `report final.pdf` | `POST /pdf-to-jpg` | `uploads/files/output/report final.jpg` |
+| `"convert test dot P N G to J P G"` | `test.png` | `POST /png-to-jpg` | `uploads/files/output/test.jpg` |
+| `"turn image.jpg into pdf"` | `image.jpg` | `POST /jpg-to-pdf` | `uploads/files/output/image.pdf` |
+| `"convert video.mp4 to gif"` | `video.mp4` | `POST /video-to-gif` | `uploads/files/output/video.gif` |
+| `"convert song.mp4 to mp3"` | `song.mp4` | `POST /mp4-to-mp3` | `uploads/files/output/song.mp3` |
+| `"convert data.csv to excel"` | `data.csv` | `POST /csv-to-excel` | `uploads/files/output/data.xlsx` |
+| `"compress this video"` | `video.mp4` (contextual) | `POST /compress-video` | `uploads/files/output/video_compressed.mp4` |
+| `"split this pdf"` | `Intern21.pdf` / `file.pdf` | `POST /split-pdf` | `uploads/files/output/Intern21_split.zip` |
+| `"merge file.pdf and Intern21.pdf to pdf"` | `file.pdf`, `Intern21.pdf` | `POST /merge-pdfs` | `uploads/files/output/merged.pdf` |
+
+#### Groq Structured JSON Schema
+Groq returns structured JSON strictly adhering to the schema:
+```json
+{
+  "intent": "convert",
+  "endpoint": "/pdf-to-png",
+  "input_files": ["Intern21.pdf"],
+  "parameters": {}
+}
+```
+
+#### Task Resolution Lifecycle (11-Step Pipeline)
+1. **Receive Voice Command**: Transcribed speech received from voice companion.
+2. **Normalize Spoken Patterns**: Normalizes `"dot"`, `"point"`, `"P N G"`, `"J P G"`, etc.
+3. **Send Registry to Groq**: Sends the 38-endpoint registry with available files to Groq.
+4. **Identify Operation & Files**: Groq identifies intent, input files, target format, and parameters.
+5. **Authoritative Storage Resolution**: Matches normalized filenames case-insensitively against actual web app files.
+6. **Validate Endpoint**: Validates the selected endpoint strictly against the 38-endpoint registry (never invents endpoints).
+7. **Pre-flight Error Checks**: If file is not found $\rightarrow$ returns `"File not found"` without backend call. If no endpoint exists $\rightarrow$ returns `"No endpoint available for this task"` without backend call.
+8. **Multipart Upload**: Sends file(s) to `http://127.0.0.1:8000` using exact method, field names, and parameters.
+9. **Stream & Receive**: Receives the processed file from the backend service.
+10. **Save to Output**: Saves result into `uploads/files/output/` preserving correct filename and extension.
+11. **UI Auto-Refresh & Feedback**: Dispatches `file.processed` WebSocket event to Nova OS desktop; Files app instantly refreshes and navigates to the Output folder.
 
 ---
 

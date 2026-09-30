@@ -10,11 +10,21 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
+from dotenv import load_dotenv
+
 # Ensure project root is in sys.path so 'backend' package is resolvable
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(current_dir)
+repo_root = os.path.dirname(project_root)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
+
+# Load .env from project root (folder containing run_bridge.py), falling back to real env vars
+dotenv_path = os.path.join(repo_root, ".env")
+if os.path.isfile(dotenv_path):
+    load_dotenv(dotenv_path=dotenv_path)
+else:
+    load_dotenv()
 
 from backend.api.http_routes import router as http_router, UPLOAD_DIR
 from backend.api.ws_routes import handle_websocket_connection
@@ -53,15 +63,15 @@ async def standalone_ws_endpoint(websocket: WebSocket):
 _ws_thread_started = False
 _ws_thread_lock = threading.Lock()
 
-def is_port_in_use(port: int, host: str = "0.0.0.0") -> bool:
-    """Checks if a local TCP port is already bound."""
+def is_port_in_use(port: int, host: str = "127.0.0.1") -> bool:
+    """Checks if a local TCP port is already bound and actively listening without creating TIME_WAIT conflicts."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.3)
         try:
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            s.bind((host, port))
-            return False
-        except OSError:
+            s.connect((host, port))
             return True
+        except (OSError, ConnectionRefusedError):
+            return False
 
 def run_standalone_ws_server(port: int):
     """Runs the dedicated WebSocket server on port 7891 in a daemon thread with 1 retry on bind failure."""

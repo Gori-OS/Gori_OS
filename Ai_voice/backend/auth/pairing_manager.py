@@ -6,7 +6,7 @@ import random
 import socket
 import hashlib
 from datetime import datetime, timezone, timedelta
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List, Tuple
 
 class PairingManager:
     def __init__(self, pin_ttl_seconds: int = 300, storage_file: Optional[str] = None):
@@ -263,28 +263,39 @@ class PairingManager:
 
     def validate_token(self, token: Optional[str]) -> Optional[Dict[str, Any]]:
         """Validates bearer/session token. Returns session dict if valid, else None."""
+        is_valid, _, session = self.check_token(token)
+        return session if is_valid else None
+
+    def check_token(self, token: Optional[str]) -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
+        """
+        Validates token and returns (is_valid, error_code, session).
+        error_code can be None, 'MISSING_TOKEN', 'TOKEN_EXPIRED', or 'INVALID_TOKEN'.
+        """
         if not token:
-            return None
-        token_str = token.strip()
+            return False, "MISSING_TOKEN", None
+
+        # Clean quotes and whitespace
+        token_str = str(token).strip().strip("'\"")
+        if not token_str:
+            return False, "MISSING_TOKEN", None
+
         token_hash = self._hash_token(token_str)
 
         # Lookup by token hash, or fallback to direct key lookup
-        session = self.sessions.get(token_hash)
+        session = self.sessions.get(token_hash) or self.sessions.get(token_str)
         if not session:
-            session = self.sessions.get(token_str)
-            if not session:
-                return None
+            return False, "INVALID_TOKEN", None
 
         if time.time() > session.get("expires_at", 0):
             # Token expired
             self.sessions.pop(token_hash, None)
             self.sessions.pop(token_str, None)
             self._save_sessions()
-            return None
+            return False, "TOKEN_EXPIRED", None
 
         # Update last seen timestamp
         session["last_seen"] = time.time()
-        return session
+        return True, None, session
 
     def get_paired_devices(self) -> List[Dict[str, Any]]:
         """Returns live list of active paired mobile devices for Settings app."""

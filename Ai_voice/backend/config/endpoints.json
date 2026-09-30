@@ -1,0 +1,395 @@
+{
+  "base_url": "https://goori-os-backend-endpoints.onrender.com",
+  "timeout_seconds": 30,
+  "endpoints": [
+    {
+      "id": "jpg_to_png",
+      "endpoint": "/jpg-to-png",
+      "category": "IMAGE",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}.png",
+      "description": "Convert JPG/JPEG image to PNG format"
+    },
+    {
+      "id": "png_to_jpg",
+      "endpoint": "/png-to-jpg",
+      "category": "IMAGE",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}.jpg",
+      "description": "Convert PNG image to JPG/JPEG format"
+    },
+    {
+      "id": "webp_to_jpg",
+      "endpoint": "/webp-to-jpg",
+      "category": "IMAGE",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}.jpg",
+      "description": "Convert WEBP image to JPG format"
+    },
+    {
+      "id": "jpg_to_webp",
+      "endpoint": "/jpg-to-webp",
+      "category": "IMAGE",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}.webp",
+      "description": "Convert JPG image to WEBP format"
+    },
+    {
+      "id": "png_to_webp",
+      "endpoint": "/png-to-webp",
+      "category": "IMAGE",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}.webp",
+      "description": "Convert PNG image to WEBP format"
+    },
+    {
+      "id": "bmp_to_jpg",
+      "endpoint": "/bmp-to-jpg",
+      "category": "IMAGE",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}.jpg",
+      "description": "Convert BMP image to JPG format"
+    },
+    {
+      "id": "bmp_to_png",
+      "endpoint": "/bmp-to-png",
+      "category": "IMAGE",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}.png",
+      "description": "Convert BMP image to PNG format"
+    },
+    {
+      "id": "tiff_to_jpg",
+      "endpoint": "/tiff-to-jpg",
+      "category": "IMAGE",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}.jpg",
+      "description": "Convert TIFF image to JPG format"
+    },
+    {
+      "id": "tiff_to_png",
+      "endpoint": "/tiff-to-png",
+      "category": "IMAGE",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}.png",
+      "description": "Convert TIFF image to PNG format"
+    },
+    {
+      "id": "heic_to_jpg",
+      "endpoint": "/heic-to-jpg",
+      "category": "IMAGE",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}.jpg",
+      "description": "Convert HEIC image to JPG format"
+    },
+    {
+      "id": "heic_to_png",
+      "endpoint": "/heic-to-png",
+      "category": "IMAGE",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}.png",
+      "description": "Convert HEIC image to PNG format"
+    },
+    {
+      "id": "compress_image",
+      "endpoint": "/compress-image",
+      "category": "IMAGE",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}_compressed.{ext}",
+      "description": "Compress and optimize image file size"
+    },
+    {
+      "id": "add_watermark",
+      "endpoint": "/add-watermark",
+      "category": "IMAGE",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}_watermarked.{ext}",
+      "description": "Add text or image watermark to image",
+      "params": {
+        "watermark": "{watermark}"
+      }
+    },
+    {
+      "id": "extract_images_from_pdf",
+      "endpoint": "/extract-images-from-pdf",
+      "category": "PDF",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}_images.zip",
+      "description": "Extract all embedded images from a PDF"
+    },
+    {
+      "id": "merge_pdfs",
+      "endpoint": "/merge-pdfs",
+      "category": "PDF",
+      "method": "POST",
+      "file_field": "files",
+      "multi_file": true,
+      "output_filename": "merged.pdf",
+      "description": "Merge multiple PDF files into a single document"
+    },
+    {
+      "id": "split_pdf",
+      "endpoint": "/split-pdf",
+      "category": "PDF",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}_split.zip",
+      "description": "Split PDF document into individual pages or parts",
+      "params": {
+        "pages": "{pages}"
+      }
+    },
+    {
+      "id": "delete_pdf_pages",
+      "endpoint": "/delete-pdf-pages",
+      "category": "PDF",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}_modified.pdf",
+      "description": "Delete selected pages from PDF document",
+      "params": {
+        "pages": "{pages}"
+      }
+    },
+    {
+      "id": "pdf_to_jpg",
+      "endpoint": "/pdf-to-jpg",
+      "category": "PDF",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}.jpg",
+      "description": "Convert PDF pages to JPG images"
+    },
+    {
+      "id": "pdf_to_png",
+      "endpoint": "/pdf-to-png",
+      "category": "PDF",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}.png",
+      "description": "Convert PDF pages to PNG images"
+    },
+    {
+      "id": "jpg_to_pdf",
+      "endpoint": "/jpg-to-pdf",
+      "category": "PDF",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}.pdf",
+      "description": "Convert JPG/JPEG image to PDF document"
+    },
+    {
+      "id": "png_to_pdf",
+      "endpoint": "/png-to-pdf",
+      "category": "PDF",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}.pdf",
+      "description": "Convert PNG image to PDF document"
+    },
+    {
+      "id": "images_to_pdf",
+      "endpoint": "/images-to-pdf",
+      "category": "PDF",
+      "method": "POST",
+      "file_field": "files",
+      "multi_file": true,
+      "output_filename": "images_combined.pdf",
+      "description": "Combine multiple images into a single PDF document"
+    },
+    {
+      "id": "compress_pdf",
+      "endpoint": "/compress-pdf",
+      "category": "PDF",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}_compressed.pdf",
+      "description": "Compress and reduce PDF document file size"
+    },
+    {
+      "id": "compress_video",
+      "endpoint": "/compress-video",
+      "category": "VIDEO",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}_compressed.mp4",
+      "description": "Compress and optimize video file size"
+    },
+    {
+      "id": "video_to_gif",
+      "endpoint": "/video-to-gif",
+      "category": "VIDEO",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}.gif",
+      "description": "Convert video clip to animated GIF"
+    },
+    {
+      "id": "gif_to_mp4",
+      "endpoint": "/gif-to-mp4",
+      "category": "VIDEO",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}.mp4",
+      "description": "Convert animated GIF to MP4 video"
+    },
+    {
+      "id": "add_audio_to_video",
+      "endpoint": "/add-audio-to-video",
+      "category": "VIDEO",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}_with_audio.mp4",
+      "description": "Add audio track to video"
+    },
+    {
+      "id": "replace_video_audio",
+      "endpoint": "/replace-video-audio",
+      "category": "VIDEO",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}_audio_replaced.mp4",
+      "description": "Replace existing audio track in video with new audio"
+    },
+    {
+      "id": "mp4_to_mp3",
+      "endpoint": "/mp4-to-mp3",
+      "category": "AUDIO",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}.mp3",
+      "description": "Extract MP3 audio from MP4 video"
+    },
+    {
+      "id": "mp4_to_wav",
+      "endpoint": "/mp4-to-wav",
+      "category": "AUDIO",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}.wav",
+      "description": "Extract WAV audio from MP4 video"
+    },
+    {
+      "id": "wav_to_mp3",
+      "endpoint": "/wav-to-mp3",
+      "category": "AUDIO",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}.mp3",
+      "description": "Convert WAV audio to MP3"
+    },
+    {
+      "id": "mp3_to_wav",
+      "endpoint": "/mp3-to-wav",
+      "category": "AUDIO",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}.wav",
+      "description": "Convert MP3 audio to WAV"
+    },
+    {
+      "id": "m4a_to_mp3",
+      "endpoint": "/m4a-to-mp3",
+      "category": "AUDIO",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}.mp3",
+      "description": "Convert M4A audio to MP3"
+    },
+    {
+      "id": "compress_audio",
+      "endpoint": "/compress-audio",
+      "category": "AUDIO",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}_compressed.mp3",
+      "description": "Compress audio file to reduce file size"
+    },
+    {
+      "id": "json_to_csv",
+      "endpoint": "/json-to-csv",
+      "category": "DATA",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}.csv",
+      "description": "Convert JSON data to CSV"
+    },
+    {
+      "id": "csv_to_json",
+      "endpoint": "/csv-to-json",
+      "category": "DATA",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}.json",
+      "description": "Convert CSV data to JSON"
+    },
+    {
+      "id": "csv_to_excel",
+      "endpoint": "/csv-to-excel",
+      "category": "DATA",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}.xlsx",
+      "description": "Convert CSV spreadsheet to Excel (XLSX)"
+    },
+    {
+      "id": "excel_to_csv",
+      "endpoint": "/excel-to-csv",
+      "category": "DATA",
+      "method": "POST",
+      "file_field": "file",
+      "multi_file": false,
+      "output_filename": "{basename}.csv",
+      "description": "Convert Excel (XLSX) spreadsheet to CSV"
+    }
+  ]
+}

@@ -43,7 +43,7 @@ os.environ["PORT_WS"] = str(WS_PORT)
 
 # Import backend services
 import uvicorn
-from backend.main import app, mdns_service
+from backend.main import app, mdns_service, is_port_in_use
 from backend.auth.pairing_manager import pairing_manager
 from backend.services.diagnostics_service import diagnostics_service
 
@@ -181,6 +181,12 @@ def main():
         name="StartupListenersCheckThread"
     )
     checker_thread.start()
+
+    # Check if HTTP port is already bound by an existing instance
+    if is_port_in_use(HTTP_PORT):
+        print(f"\n[STARTUP ERROR] Port {HTTP_PORT} is already in use by another running process (likely another terminal running 'run_bridge.py').")
+        print("Please close the existing bridge instance or stop the conflicting process before starting a new one.\n")
+        sys.exit(1)
 
     # Launch HTTP server on 0.0.0.0
     try:

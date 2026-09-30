@@ -17,24 +17,84 @@
         <!-- Desktop Icons -->
         <div class="desktop-icons">
             <div class="desktop-icon" ondblclick="window.WindowManager.openApp('nova-voice')" title="Open Nova Voice Agent">
-                <div class="icon">🎤</div>
+                <div class="icon-tile">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                        <line x1="12" x2="12" y1="19" y2="22"/>
+                    </svg>
+                </div>
                 <div class="label">Nova Voice</div>
             </div>
             <div class="desktop-icon" ondblclick="window.WindowManager.openApp('files')" title="Browse Uploaded Files">
-                <div class="icon">📁</div>
+                <div class="icon-tile">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/>
+                    </svg>
+                </div>
                 <div class="label">Files</div>
             </div>
             <div class="desktop-icon" ondblclick="window.WindowManager.openApp('terminal')" title="Interactive Terminal">
-                <div class="icon">🖥</div>
+                <div class="icon-tile">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <rect width="20" height="16" x="2" y="4" rx="3"/>
+                        <path d="m7 10 3 3-3 3"/>
+                        <line x1="13" x2="17" y1="16" y2="16"/>
+                    </svg>
+                </div>
                 <div class="label">Terminal</div>
             </div>
             <div class="desktop-icon" ondblclick="window.WindowManager.openApp('editor')" title="Text Editor">
-                <div class="icon">📝</div>
-                <div class="label">Text Editor</div>
+                <div class="icon-tile">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                        <line x1="16" x2="8" y1="13" y2="13"/>
+                        <line x1="16" x2="8" y1="17" y2="17"/>
+                        <line x1="10" x2="8" y1="9" y2="9"/>
+                    </svg>
+                </div>
+                <div class="label">Editor</div>
             </div>
             <div class="desktop-icon" ondblclick="window.WindowManager.openApp('settings')" title="Bridge & Device Settings">
-                <div class="icon">⚙</div>
+                <div class="icon-tile">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                    </svg>
+                </div>
                 <div class="label">Settings</div>
+            </div>
+            <div class="desktop-icon" ondblclick="window.WindowManager.openApp('workspace')" title="Workspace">
+                <div class="icon-tile">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="m7.5 4.27 9 5.15"/>
+                        <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/>
+                        <path d="m3.3 7 8.7 5 8.7-5"/>
+                        <path d="M12 22V12"/>
+                    </svg>
+                </div>
+                <div class="label">Workspace</div>
+            </div>
+            <div class="desktop-icon" ondblclick="window.WindowManager.openApp('browser')" title="Web Browser (WebView)">
+                <div class="icon-tile">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="2" x2="22" y1="12" y2="12"/>
+                        <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                    </svg>
+                </div>
+                <div class="label">Browser</div>
+            </div>
+            <div class="desktop-icon" ondblclick="window.WindowManager.openApp('preview')" title="File Preview Viewer">
+                <div class="icon-tile">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                        <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
+                        <circle cx="9" cy="9" r="2"/>
+                        <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+                    </svg>
+                </div>
+                <div class="label">Preview</div>
             </div>
         </div>
 
@@ -68,12 +128,74 @@
 
         <!-- Flash overlay for screenshot command feedback -->
         <div id="screenshot-flash" class="screenshot-flash"></div>
+
+        <!-- File Conversion Animation Overlay (Source Format → Converting → Target Format) -->
+        <div id="conversion-overlay" class="conversion-overlay">
+            <div class="conversion-card" id="conversion-card">
+                <div class="conversion-header">
+                    <div class="conversion-header-left">
+                        <span class="conversion-badge-pulse" id="conv-badge-pulse"></span>
+                        <span class="conversion-header-title">FILE CONVERSION PIPELINE</span>
+                    </div>
+                    <button class="conversion-close-btn" onclick="window.hideConversionAnimation()" title="Dismiss">✕</button>
+                </div>
+                <div class="conversion-file-info">
+                    <span class="conversion-filename" id="conversion-filename">file</span>
+                </div>
+                
+                <!-- Explicit Flow: Source Format → Converting → Target Format -->
+                <div class="conversion-flow" id="conversion-flow">
+                    <div class="format-node source" id="conv-source-node">
+                        <span class="format-pill-tag" id="conv-source-pill">SRC</span>
+                        <span class="format-subtext">Source Format</span>
+                    </div>
+
+                    <div class="conversion-connector">
+                        <div class="connector-beam"></div>
+                        <div class="connector-arrow">→</div>
+                    </div>
+
+                    <div class="conversion-center-node" id="conv-center-node">
+                        <div class="converter-icon-wrapper" id="conv-icon-wrapper">
+                            <span class="converter-icon spinner" id="conv-status-icon">🔄</span>
+                        </div>
+                        <div class="conversion-state-label" id="conv-state-label">Converting</div>
+                    </div>
+
+                    <div class="conversion-connector">
+                        <div class="connector-beam"></div>
+                        <div class="connector-arrow">→</div>
+                    </div>
+
+                    <div class="format-node target" id="conv-target-node">
+                        <span class="format-pill-tag" id="conv-target-pill">TGT</span>
+                        <span class="format-subtext">Target Format</span>
+                    </div>
+                </div>
+
+                <div class="conversion-label-canonical" id="conv-canonical-text">
+                    <span class="hl-src" id="conv-canonical-src">Source Format</span> &rarr; <span class="hl-mid" id="conv-canonical-mid">Converting</span> &rarr; <span class="hl-tgt" id="conv-canonical-tgt">Target Format</span>
+                </div>
+
+                <div class="conversion-progress-track">
+                    <div class="conversion-progress-bar" id="conv-progress-bar"></div>
+                </div>
+
+                <div class="conversion-status-msg" id="conv-status-msg">
+                    Converting file...
+                </div>
+
+                <div class="conversion-actions" id="conv-actions" style="display: none;">
+                    <button class="btn-conv-action" id="conv-view-btn" onclick="window.handleConversionPreviewClick()">🖼 Open in Preview</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Taskbar -->
     <div id="taskbar">
         <div class="start-button" onclick="window.WindowManager.openApp('nova-voice')" title="Nova OS">
-            🐉 NOVA OS
+            <span class="os-symbol">◈</span> NOVA OS
         </div>
         <div class="open-apps" id="taskbar-apps">
             <!-- Dynamic taskbar items -->
@@ -94,7 +216,9 @@
     <!-- Scripts -->
     <script src="js/bridge_client.js"></script>
     <script src="js/helpers.js"></script>
+    <script src="js/workspace.js"></script>
     <script src="js/window_manager.js"></script>
+    <script src="js/speech_service.js"></script>
     <script src="js/main.js"></script>
 </body>
 </html>

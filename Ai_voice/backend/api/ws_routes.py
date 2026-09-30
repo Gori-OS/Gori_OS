@@ -80,24 +80,27 @@ async def handle_websocket_connection(websocket: WebSocket, client_type_hint: st
                     await websocket.send_text(json.dumps(rejection))
                     continue
 
-                # Process authenticated command
+                # Process authenticated command with client context
                 data_dict = msg_dict.get("data") or {}
                 cmd_text = data_dict.get("command") or ""
-                
-                result = CommandService.process(cmd_text)
-                
+                client_info = connection_manager.connections.get(websocket, {})
+                client_type = client_info.get("client_type", "desktop")
+
+                result = CommandService.process(cmd_text, client_context=client_type)
+
                 response = {
                     "type": "command_result",
                     "request_id": request_id,
                     "protocol_version": "1.0",
                     "timestamp": int(time.time() * 1000),
                     "success": result["status"] == "completed",
+                    "target_device": result.get("target_device", "computer"),
                     "data": result
                 }
-                
+
                 # Respond to sender
                 await websocket.send_text(json.dumps(response))
-                
+
                 # Broadcast command execution to other connected clients (e.g. desktop UI)
                 # so desktop opens the app window and updates Nova voice transcript in real-time
                 await connection_manager.broadcast(response, exclude=websocket)

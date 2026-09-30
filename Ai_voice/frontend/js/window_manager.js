@@ -13,6 +13,12 @@ class WindowManager {
     openApp(appId) {
         if (this.windows.has(appId)) {
             this.focusWindow(appId);
+            if (window.innerWidth <= 768) {
+                const win = this.windows.get(appId);
+                if (win && win.dataset.maximized !== 'true') {
+                    this.maximizeWindow(appId);
+                }
+            }
             return;
         }
         const appConfig = this.getAppConfig(appId);
@@ -20,6 +26,10 @@ class WindowManager {
 
         this.createWindow(appId, appConfig);
         this.updateTaskbar();
+
+        if (window.innerWidth <= 768) {
+            this.maximizeWindow(appId);
+        }
     }
 
     getAppConfig(appId) {
@@ -33,7 +43,7 @@ class WindowManager {
                 contentHtml: `
                     <div style="display: flex; flex-direction: column; height: 100%;">
                         <div class="nova-voice-orb-container">
-                            <div class="nova-orb" id="nova-orb">NOVA</div>
+                            <div class="nova-orb" id="nova-orb" onclick="window.toggleNovaVoiceMic()" style="cursor: pointer;" title="Click to speak / stop">NOVA</div>
                         </div>
                         <div class="nova-voice-status" id="nova-status">STANDBY — READY FOR COMMANDS</div>
                         <div class="nova-voice-history" id="nova-history" style="flex-grow: 1;">
@@ -43,6 +53,7 @@ class WindowManager {
                         <div style="display: flex; border-top: 1px solid var(--border-3); padding: 12px; background: var(--bg-panel-2); gap: 8px;">
                             <input type="file" id="nova-file-upload" style="display: none;" onchange="window.handleFileUpload(event)">
                             <button onclick="document.getElementById('nova-file-upload').click()" style="background: var(--bg-panel-4); border: 1px solid var(--border-3); color: var(--text-muted); cursor: pointer; font-size: 16px; padding: 6px 10px; border-radius: 6px;" title="Upload File via Bridge">📎</button>
+                            <button id="nova-mic-btn" onclick="window.toggleNovaVoiceMic()" style="background: var(--bg-panel-4); border: 1px solid var(--border-3); color: var(--text-muted); cursor: pointer; font-size: 16px; padding: 6px 10px; border-radius: 6px;" title="Click to speak / stop">🎙</button>
                             <input type="text" id="nova-cli-input" placeholder="Say or type a command..." style="flex-grow: 1; background: var(--bg-panel-4); border: 1px solid var(--border-3); color: var(--text-primary); padding: 8px 12px; border-radius: 6px; font-family: var(--font-ui); font-size: 13px; outline: none;">
                             <button onclick="window.sendMockCommand()" style="background: rgba(90, 247, 142, 0.1); border: 1px solid rgba(90, 247, 142, 0.3); color: var(--accent-green); padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 12px;">SEND</button>
                         </div>
@@ -87,6 +98,10 @@ class WindowManager {
                             <div class="files-nav-item tree-child" id="files-nav-photos" onclick="window.navigateToFolder('photos')">
                                 <span>🖼️ Photos</span>
                                 <span class="tree-badge" id="badge-photos-count">-</span>
+                            </div>
+                            <div class="files-nav-item" id="files-nav-output" onclick="window.navigateToFolder('output')">
+                                <span>📤 Output</span>
+                                <span class="tree-badge" id="badge-output-count">-</span>
                             </div>
 
                             <div class="files-tree-section-title" style="margin-top: 10px;">Quick Views</div>
@@ -213,6 +228,67 @@ class WindowManager {
                     </div>
                 `,
                 onInit: () => window.loadSettingsStatus()
+            },
+            'workspace': {
+                title: '📦 Workspace',
+                width: 1000,
+                height: 650,
+                x: 100,
+                y: 50,
+                contentHtml: '<div id="workspace-root" style="height:100%"></div>',
+                onInit: () => window.Workspace && window.Workspace.mount()
+            },
+            'preview': {
+                title: '🖼 File Preview',
+                width: 780,
+                height: 560,
+                x: 160,
+                y: 80,
+                contentHtml: `
+                    <div class="preview-container" id="preview-app-container">
+                        <div class="preview-toolbar">
+                            <span class="preview-filename" id="preview-filename-label">No file selected</span>
+                            <div class="preview-actions">
+                                <button class="preview-btn" onclick="window.previewZoomIn()" title="Zoom in">🔍+</button>
+                                <button class="preview-btn" onclick="window.previewZoomOut()" title="Zoom out">🔍-</button>
+                                <button class="preview-btn" onclick="window.previewZoomReset()" title="Reset zoom">100%</button>
+                                <a id="preview-download-btn" class="preview-btn" href="#" download title="Download">⬇ Save</a>
+                            </div>
+                        </div>
+                        <div class="preview-viewport" id="preview-viewport">
+                            <div class="preview-empty">Select or open a file to preview</div>
+                        </div>
+                    </div>
+                `
+            },
+            'browser': {
+                title: '🌐 Web Browser',
+                width: 920,
+                height: 620,
+                x: 120,
+                y: 60,
+                contentHtml: `
+                    <div class="browser-container" id="browser-app-container">
+                        <div class="browser-toolbar">
+                            <button class="browser-nav-btn" onclick="window.browserNavBack()" title="Back">◀</button>
+                            <button class="browser-nav-btn" onclick="window.browserNavForward()" title="Forward">▶</button>
+                            <button class="browser-nav-btn" onclick="window.browserNavReload()" title="Reload">↻</button>
+                            <input type="text" id="browser-url-input" class="browser-url-input" value="https://www.google.com" placeholder="Enter URL or search..." onkeydown="if(event.key==='Enter') window.browserNavigate(this.value)">
+                            <button class="browser-go-btn" onclick="window.browserNavigate(document.getElementById('browser-url-input').value)">Go</button>
+                        </div>
+                        <div class="browser-viewport">
+                            <iframe id="browser-webview-frame" class="browser-webview-frame" src="about:blank" sandbox="allow-same-origin allow-scripts allow-forms allow-popups"></iframe>
+                        </div>
+                    </div>
+                `,
+                onInit: () => {
+                    const frame = document.getElementById('browser-webview-frame');
+                    const input = document.getElementById('browser-url-input');
+                    if (frame && (!frame.src || frame.src === 'about:blank')) {
+                        frame.src = '/api/browser/search?q=&redirect=https://www.google.com';
+                        if (input) input.value = 'https://www.google.com';
+                    }
+                }
             }
         };
 
@@ -299,6 +375,11 @@ class WindowManager {
     }
 
     closeWindow(appId) {
+        if (appId === 'nova-voice') {
+            if (window.SpeechService && typeof window.SpeechService.isActive === 'function' && window.SpeechService.isActive()) {
+                window.SpeechService.stop();
+            }
+        }
         const win = this.windows.get(appId);
         if (win) {
             win.remove();
@@ -348,7 +429,10 @@ class WindowManager {
                 'terminal': '🖥 Terminal',
                 'files': '📁 Files',
                 'editor': '📝 Editor',
-                'settings': '⚙ Settings'
+                'settings': '⚙ Settings',
+                'workspace': '📦 Workspace',
+                'preview': '🖼 Preview',
+                'browser': '🌐 Browser'
             };
             item.textContent = iconMap[appId] || appId;
             item.onclick = () => {
@@ -443,3 +527,245 @@ class WindowManager {
 }
 
 window.WindowManager = new WindowManager();
+
+/* In-OS File Preview Implementation */
+window._previewZoom = 1;
+window.previewZoomIn = function() {
+    window._previewZoom = Math.min(3, window._previewZoom + 0.25);
+    const target = document.querySelector('#preview-viewport img, #preview-viewport video');
+    if (target) target.style.transform = `scale(${window._previewZoom})`;
+};
+
+window.previewZoomOut = function() {
+    window._previewZoom = Math.max(0.25, window._previewZoom - 0.25);
+    const target = document.querySelector('#preview-viewport img, #preview-viewport video');
+    if (target) target.style.transform = `scale(${window._previewZoom})`;
+};
+
+window.previewZoomReset = function() {
+    window._previewZoom = 1;
+    const target = document.querySelector('#preview-viewport img, #preview-viewport video');
+    if (target) target.style.transform = 'scale(1)';
+};
+
+window.openFilePreview = function(url, filename, fileType) {
+    if (!url) return;
+    const name = filename || url.split('/').pop() || 'file';
+    const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : (fileType || '').toLowerCase();
+
+    // Ensure preview window is open and focused
+    if (window.WindowManager) {
+        window.WindowManager.openApp('preview');
+        window.WindowManager.focusWindow('preview');
+    }
+
+    const winEl = document.getElementById('win-preview');
+    if (winEl) {
+        const titleEl = winEl.querySelector('.window-title');
+        if (titleEl) titleEl.textContent = `🖼 File Preview — ${name}`;
+    }
+
+    const labelEl = document.getElementById('preview-filename-label');
+    if (labelEl) labelEl.textContent = name;
+
+    const downloadBtn = document.getElementById('preview-download-btn');
+    if (downloadBtn) {
+        downloadBtn.href = url;
+        downloadBtn.download = name;
+    }
+
+    const viewport = document.getElementById('preview-viewport');
+    if (!viewport) return;
+
+    window._previewZoom = 1;
+
+    // Detect format category
+    const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'image', 'photo'].includes(ext);
+    const isPdf = ext === 'pdf';
+    const isVideo = ['mp4', 'webm', 'ogg', 'mov', 'mkv', 'video'].includes(ext);
+    const isAudio = ['mp3', 'wav', 'aac', 'flac', 'm4a', 'audio'].includes(ext);
+    const isText = ['txt', 'csv', 'json', 'md', 'log', 'py', 'js', 'html', 'css', 'xml'].includes(ext);
+
+    if (isImage) {
+        viewport.innerHTML = `
+            <div class="preview-media-wrapper">
+                <img id="preview-active-image" src="${url}" class="preview-image" alt="${name}">
+            </div>
+        `;
+    } else if (isPdf) {
+        viewport.innerHTML = `
+            <iframe src="${url}" class="preview-embed-frame" title="${name}"></iframe>
+        `;
+    } else if (isVideo) {
+        viewport.innerHTML = `
+            <div class="preview-media-wrapper">
+                <video controls autoplay src="${url}" class="preview-video"></video>
+            </div>
+        `;
+    } else if (isAudio) {
+        viewport.innerHTML = `
+            <div class="preview-media-wrapper audio-mode" id="preview-audio-container">
+                <div class="audio-player-card">
+                    <div class="audio-disc-wrapper">
+                        <div class="audio-disc spinning" id="audio-disc-spinner">
+                            <div class="audio-disc-center"></div>
+                        </div>
+                    </div>
+                    <div class="audio-meta">
+                        <div class="audio-title">${name}</div>
+                        <div class="audio-status" id="audio-playback-status">Playing Audio</div>
+                    </div>
+                    <div class="audio-visualizer active" id="audio-visualizer-bars">
+                        <span class="bar"></span>
+                        <span class="bar"></span>
+                        <span class="bar"></span>
+                        <span class="bar"></span>
+                        <span class="bar"></span>
+                        <span class="bar"></span>
+                        <span class="bar"></span>
+                        <span class="bar"></span>
+                    </div>
+                    <audio id="preview-audio-element" controls autoplay src="${url}" style="width: 80%; max-width: 420px; margin-top: 14px;"></audio>
+                </div>
+            </div>
+        `;
+        const audioEl = document.getElementById('preview-audio-element');
+        const discEl = document.getElementById('audio-disc-spinner');
+        const statusEl = document.getElementById('audio-playback-status');
+        const visualizerEl = document.getElementById('audio-visualizer-bars');
+
+        if (audioEl) {
+            audioEl.onplay = () => {
+                if (discEl) discEl.classList.add('spinning');
+                if (statusEl) statusEl.textContent = 'Playing Audio';
+                if (visualizerEl) visualizerEl.classList.add('active');
+            };
+            audioEl.onpause = () => {
+                if (discEl) discEl.classList.remove('spinning');
+                if (statusEl) statusEl.textContent = 'Paused';
+                if (visualizerEl) visualizerEl.classList.remove('active');
+            };
+            audioEl.onended = () => {
+                if (discEl) discEl.classList.remove('spinning');
+                if (statusEl) statusEl.textContent = 'Completed';
+                if (visualizerEl) visualizerEl.classList.remove('active');
+            };
+            // Directly start audio playback
+            const playPromise = audioEl.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(err => {
+                    console.log('[Audio] Playback started or deferred until gesture:', err);
+                });
+            }
+        }
+    } else if (isText) {
+        viewport.innerHTML = `<div class="preview-loading">Loading text content...</div>`;
+        fetch(url)
+            .then(res => res.text())
+            .then(txt => {
+                const escaped = txt.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                viewport.innerHTML = `<pre class="preview-text-view"><code>${escaped}</code></pre>`;
+            })
+            .catch(err => {
+                viewport.innerHTML = `<div class="preview-error">Failed to load text: ${err.message}</div>`;
+            });
+    } else {
+        viewport.innerHTML = `
+            <div class="preview-media-wrapper general-mode">
+                <div style="font-size: 48px; margin-bottom: 16px;">📄</div>
+                <div style="font-weight: 600; font-size: 16px; margin-bottom: 6px; color: var(--text-primary);">${name}</div>
+                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px;">File ready in Nova OS Workspace</div>
+                <a href="${url}" download="${name}" class="preview-btn" style="padding: 8px 16px; background: rgba(90, 247, 142, 0.15); color: var(--accent-green); border: 1px solid rgba(90, 247, 142, 0.3); text-decoration: none; border-radius: 6px;">⬇ Download ${name}</a>
+            </div>
+        `;
+    }
+};
+
+/* Audio Playback Global Controls */
+window.playAudioPlayback = function() {
+    const audioEl = document.getElementById('preview-audio-element');
+    if (audioEl) {
+        audioEl.play().catch(e => console.log('playAudioPlayback err:', e));
+    }
+};
+
+window.pauseAudioPlayback = function() {
+    const audioEl = document.getElementById('preview-audio-element');
+    if (audioEl) {
+        audioEl.pause();
+    }
+};
+
+window.resumeAudioPlayback = function() {
+    const audioEl = document.getElementById('preview-audio-element');
+    if (audioEl) {
+        audioEl.play().catch(e => console.log('resumeAudioPlayback err:', e));
+    }
+};
+
+/* In-OS Browser Controls */
+window.browserNavigate = function(rawUrl, displayUrl) {
+    if (!rawUrl) return;
+    let url = rawUrl.trim();
+    let showUrl = displayUrl || url;
+
+    if (url.startsWith('/api/browser/search')) {
+        const m = url.match(/[?&]q=([^&]+)/);
+        const q = m ? decodeURIComponent(m[1]) : '';
+        if (!displayUrl) {
+            showUrl = q ? `https://www.google.com/search?q=${encodeURIComponent(q)}` : 'https://www.google.com';
+        }
+    } else if (url.startsWith('/api/browser/proxy')) {
+        // Proxy route already set
+    } else if (url === 'https://www.google.com' || url === 'http://www.google.com' || url === 'https://google.com' || url === 'google.com' || url === 'google') {
+        showUrl = 'https://www.google.com';
+        url = '/api/browser/search?q=&redirect=https://www.google.com';
+    } else if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('/') && !url.startsWith('about:')) {
+        if (url.includes('.') && !url.includes(' ')) {
+            url = 'https://' + url;
+            showUrl = url;
+        } else {
+            const query = url;
+            showUrl = 'https://www.google.com/search?q=' + encodeURIComponent(query);
+            url = '/api/browser/search?q=' + encodeURIComponent(query) + '&ref=https://www.google.com/search?q=' + encodeURIComponent(query);
+        }
+    } else if (url.includes('google.com/search')) {
+        const m = url.match(/[?&]q=([^&]+)/);
+        const q = m ? decodeURIComponent(m[1]) : '';
+        showUrl = url;
+        url = '/api/browser/search?q=' + encodeURIComponent(q) + '&ref=' + url;
+    }
+
+    if (window.WindowManager) {
+        window.WindowManager.openApp('browser');
+        window.WindowManager.focusWindow('browser');
+    }
+    const frame = document.getElementById('browser-webview-frame');
+    const input = document.getElementById('browser-url-input');
+    if (input) input.value = showUrl;
+    if (frame) {
+        frame.src = url;
+    }
+};
+
+window.browserNavBack = function() {
+    try {
+        const frame = document.getElementById('browser-webview-frame');
+        if (frame && frame.contentWindow) frame.contentWindow.history.back();
+    } catch(e) {}
+};
+
+window.browserNavForward = function() {
+    try {
+        const frame = document.getElementById('browser-webview-frame');
+        if (frame && frame.contentWindow) frame.contentWindow.history.forward();
+    } catch(e) {}
+};
+
+window.browserNavReload = function() {
+    const frame = document.getElementById('browser-webview-frame');
+    if (frame) {
+        const src = frame.src;
+        frame.src = src;
+    }
+};
