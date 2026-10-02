@@ -434,7 +434,8 @@ window.handleFileUpload = async function(event) {
 
     let token = window.BridgeClient?.localToken || localStorage.getItem('novaos_token') || '';
     try {
-        let response = await fetch('/upload/file', {
+        const uploadUrl = (typeof window.apiUrl === 'function') ? window.apiUrl('/upload/file') : '/upload/file';
+        let response = await fetch(uploadUrl, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`
@@ -445,7 +446,7 @@ window.handleFileUpload = async function(event) {
         if ((response.status === 401 || response.status === 403) && window.BridgeClient) {
             const status = await window.BridgeClient.fetchPairingStatus();
             token = status?.local_token || '';
-            response = await fetch('/upload/file', {
+            response = await fetch(uploadUrl, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${token}`
@@ -486,7 +487,8 @@ window.handleFilesAppUpload = async function(event) {
     const token = window.BridgeClient?.localToken || '';
 
     try {
-        const response = await fetch('/upload/file', {
+        const uploadUrl = (typeof window.apiUrl === 'function') ? window.apiUrl('/upload/file') : '/upload/file';
+        const response = await fetch(uploadUrl, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`
@@ -576,7 +578,8 @@ window.loadFilesList = async function() {
     if (!container) return;
 
     try {
-        const res = await fetch('/files');
+        const filesUrl = (typeof window.apiUrl === 'function') ? window.apiUrl('/files') : '/files';
+        const res = await fetch(filesUrl);
         if (res.ok) {
             const data = await res.json();
             window._cachedFiles = data.files || [];
@@ -767,7 +770,8 @@ window.deleteFile = async function(filePath, fileName) {
     if (!confirmed) return;
 
     try {
-        const res = await fetch(`/files?path=${encodeURIComponent(filePath)}`, {
+        const deleteUrl = (typeof window.apiUrl === 'function') ? window.apiUrl(`/files?path=${encodeURIComponent(filePath)}`) : `/files?path=${encodeURIComponent(filePath)}`;
+        const res = await fetch(deleteUrl, {
             method: 'DELETE'
         });
         if (res.ok) {
@@ -966,7 +970,8 @@ window.editorSave = async function() {
 
     const token = window.BridgeClient?.localToken || '';
     try {
-        const response = await fetch('/upload/file', {
+        const uploadUrl = (typeof window.apiUrl === 'function') ? window.apiUrl('/upload/file') : '/upload/file';
+        const response = await fetch(uploadUrl, {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${token}`
@@ -992,7 +997,8 @@ window.editorSave = async function() {
 // Regenerate 6-digit pairing PIN
 window.regeneratePin = async function() {
     try {
-        const res = await fetch('/pair/regenerate', { method: 'POST' });
+        const regenUrl = (typeof window.apiUrl === 'function') ? window.apiUrl('/pair/regenerate') : '/pair/regenerate';
+        const res = await fetch(regenUrl, { method: 'POST' });
         if (res.ok) {
             const data = await res.json();
             if (window.BridgeClient) {
@@ -1008,9 +1014,11 @@ window.regeneratePin = async function() {
 // Load status for Settings application
 window.loadSettingsStatus = async function() {
     try {
+        const statusUrl = (typeof window.apiUrl === 'function') ? window.apiUrl('/api/status') : '/api/status';
+        const diagUrl = (typeof window.apiUrl === 'function') ? window.apiUrl('/api/network/diagnostics') : '/api/network/diagnostics';
         const [statusRes, diagRes] = await Promise.all([
-            fetch('/api/status').catch(() => null),
-            fetch('/api/network/diagnostics').catch(() => null)
+            fetch(statusUrl).catch(() => null),
+            fetch(diagUrl).catch(() => null)
         ]);
 
         const data = statusRes && statusRes.ok ? await statusRes.json() : null;
@@ -1076,8 +1084,14 @@ window.loadSettingsStatus = async function() {
             const lanAdapters = document.getElementById('st-lan-adapters');
             const mdnsStatus = document.getElementById('st-mdns-status');
 
-            if (httpPort) httpPort.textContent = `${diag.http_port} (Listening)`;
-            if (wsPort) wsPort.textContent = diag.ws_bound ? `${diag.ws_port} (Listening)` : `${diag.ws_port} [Fallback /ws on ${diag.http_port}]`;
+            const isLocalEnv = (typeof window.IS_LOCAL_ENV === 'boolean') ? window.IS_LOCAL_ENV : true;
+            if (httpPort) httpPort.textContent = isLocalEnv ? `${diag.http_port} (Listening)` : `Cloud HTTPS (${diag.http_port || '443'})`;
+            if (wsPort) wsPort.textContent = isLocalEnv ? (diag.ws_bound ? `${diag.ws_port} (Listening)` : `${diag.ws_port} [Fallback /ws on ${diag.http_port}]`) : `Cloud WSS (${diag.ws_bound ? '/ws' : 'Connecting...'})`;
+            
+            const metaInfo = document.getElementById('pairing-meta-info');
+            if (metaInfo) {
+                metaInfo.textContent = isLocalEnv ? `HTTP ${diag.http_port} | WS ${diag.ws_port}` : 'Render: gori-os.onrender.com | WS: /ws';
+            }
             
             if (mdnsStatus) {
                 mdnsStatus.textContent = diag.mdns_registered ? '_winbridge._tcp (Active)' : '_winbridge._tcp (Unregistered/Offline)';
@@ -1138,7 +1152,8 @@ window.revokePairedDevice = async function(tokenHash) {
         return;
     }
     try {
-        const res = await fetch('/pair/revoke', {
+        const revokeUrl = (typeof window.apiUrl === 'function') ? window.apiUrl('/pair/revoke') : '/pair/revoke';
+        const res = await fetch(revokeUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ token_hash: tokenHash })

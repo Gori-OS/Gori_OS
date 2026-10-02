@@ -39,9 +39,16 @@ class BridgeClient {
         }, 15000);
     }
 
-    async fetchPairingStatus() {
+    async fetchPairingStatus(retryCount = 0, maxRetries = 10) {
+        const contactText = document.getElementById('pairing-contact-text');
+        const statusLabel = document.getElementById('pairing-status-label');
         try {
-            const res = await fetch('/pair/status');
+            const url = (typeof window.apiUrl === 'function') ? window.apiUrl('/pair/status') : '/pair/status';
+            const controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+            const timeoutId = controller ? setTimeout(() => controller.abort(), 12000) : null;
+            const res = await fetch(url, controller ? { signal: controller.signal } : {});
+            if (timeoutId) clearTimeout(timeoutId);
+
             if (res.ok) {
                 const data = await res.json();
                 this.localToken = data.local_token;
@@ -52,16 +59,26 @@ class BridgeClient {
                 }
                 this.updatePairingUi(data);
                 return data;
+            } else if (res.status >= 500 && retryCount < maxRetries) {
+                throw new Error(`Server returned HTTP ${res.status}`);
             }
         } catch (e) {
-            console.warn('[BridgeClient] Failed to fetch initial pairing status:', e);
+            console.warn(`[BridgeClient] Failed to fetch pairing status (attempt ${retryCount + 1}/${maxRetries}):`, e);
+            if (retryCount < maxRetries) {
+                if (contactText) contactText.textContent = 'Server waking up, please wait…';
+                if (statusLabel && !this.isAuthenticated) statusLabel.textContent = 'Server waking up, please wait…';
+                const delay = Math.min(2000 * Math.pow(1.3, retryCount), 10000);
+                await new Promise(r => setTimeout(r, delay));
+                return this.fetchPairingStatus(retryCount + 1, maxRetries);
+            }
         }
         return null;
     }
 
     async fetchDiagnostics() {
         try {
-            const res = await fetch('/api/network/diagnostics');
+            const url = (typeof window.apiUrl === 'function') ? window.apiUrl('/api/network/diagnostics') : '/api/network/diagnostics';
+            const res = await fetch(url);
             if (res.ok) {
                 const data = await res.json();
                 this.updateDiagnosticsUi(data);
@@ -138,10 +155,9 @@ class BridgeClient {
     }
 
     connect() {
-        const host = window.location.hostname || 'localhost';
-        // Connect primarily to port 7891, or fallback to current port if on single-port mode
-        const targetPort = (this.reconnectAttempts % 2 === 0) ? 7891 : (window.location.port || 7890);
-        const wsUrl = `ws://${host}:${targetPort}/ws`;
+        const wsUrl = (typeof window.wsUrl === 'function')
+            ? window.wsUrl(this.reconnectAttempts)
+            : `ws://${window.location.hostname || 'localhost'}:${(this.reconnectAttempts % 2 === 0) ? 7891 : (window.location.port || 7890)}/ws`;
 
         try {
             console.log(`[BridgeClient] Connecting to ${wsUrl}...`);
@@ -201,6 +217,12 @@ class BridgeClient {
     scheduleReconnect() {
         const timeout = Math.min(1000 * Math.pow(1.5, this.reconnectAttempts), 15000);
         this.reconnectAttempts++;
+        if (this.reconnectAttempts > 1) {
+            const statusLabel = document.getElementById('pairing-status-label');
+            if (statusLabel && !this.isAuthenticated) {
+                statusLabel.textContent = 'Server waking up, please wait…';
+            }
+        }
         setTimeout(() => this.connect(), timeout);
     }
 

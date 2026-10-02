@@ -28,6 +28,8 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(MOBILE_DIR, exist_ok=True)
 os.makedirs(PHOTOS_DIR, exist_ok=True)
 
+from backend.config.endpoints import get_utility_backend_url
+
 # ---------------------------------------------------------------------------
 # 1. REGISTRY LOADER: Read endpoints.json once as the SINGLE source of truth
 # ---------------------------------------------------------------------------
@@ -35,7 +37,7 @@ def _load_registry(config_path: str = CONFIG_PATH) -> Tuple[str, float, List[Dic
     with open(config_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    base_url = data.get("base_url", "https://goori-os-backend-endpoints.onrender.com").rstrip("/")
+    base_url = get_utility_backend_url(config_path)
     timeout_sec = float(data.get("timeout_seconds", 30))
     endpoints_list = data.get("endpoints", [])
     registry_by_path = {ep["endpoint"]: ep for ep in endpoints_list}

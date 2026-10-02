@@ -72,12 +72,13 @@ class SpeechService {
         let tempToken = null;
         try {
             const headers = {};
-            const localToken = window.BridgeClient?.localToken;
+            const localToken = window.BridgeClient?.localToken || (typeof localStorage !== 'undefined' ? localStorage.getItem('novaos_token') : null);
             if (localToken) {
                 headers['Authorization'] = `Bearer ${localToken}`;
             }
 
-            const response = await fetch('/token', { headers });
+            const tokenUrl = (typeof window.apiUrl === 'function') ? window.apiUrl('/token') : '/token';
+            const response = await fetch(tokenUrl, { headers });
             if (!response.ok) {
                 const errData = await response.json().catch(() => ({}));
                 const serverMsg = errData.detail || errData.message || response.statusText;

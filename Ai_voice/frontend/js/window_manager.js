@@ -183,10 +183,10 @@ class WindowManager {
                                 Checking phone reachability...
                             </div>
                             <div class="settings-grid">
-                                <span class="settings-label">HTTP Port (0.0.0.0):</span>
-                                <span class="settings-val" id="st-http-port">7890</span>
-                                <span class="settings-label">WS Port (0.0.0.0):</span>
-                                <span class="settings-val" id="st-ws-port">7891</span>
+                                <span class="settings-label">${(typeof window !== 'undefined' && window.IS_LOCAL_ENV === false) ? 'HTTP / HTTPS Endpoint:' : 'HTTP Port (0.0.0.0):'}</span>
+                                <span class="settings-val" id="st-http-port">${(typeof window !== 'undefined' && window.IS_LOCAL_ENV === false) ? 'Cloud HTTPS' : '7890'}</span>
+                                <span class="settings-label">${(typeof window !== 'undefined' && window.IS_LOCAL_ENV === false) ? 'WebSocket Endpoint:' : 'WS Port (0.0.0.0):'}</span>
+                                <span class="settings-val" id="st-ws-port">${(typeof window !== 'undefined' && window.IS_LOCAL_ENV === false) ? 'Cloud WSS /ws' : '7891'}</span>
                                 <span class="settings-label">Firewall Status:</span>
                                 <span class="settings-val" id="st-fw-status">Checking...</span>
                                 <span class="settings-label">mDNS Discovery:</span>
@@ -285,7 +285,7 @@ class WindowManager {
                     const frame = document.getElementById('browser-webview-frame');
                     const input = document.getElementById('browser-url-input');
                     if (frame && (!frame.src || frame.src === 'about:blank')) {
-                        frame.src = '/api/browser/search?q=&redirect=https://www.google.com';
+                        frame.src = (typeof window.apiUrl === 'function') ? window.apiUrl('/api/browser/search?q=&redirect=https://www.google.com') : '/api/browser/search?q=&redirect=https://www.google.com';
                         if (input) input.value = 'https://www.google.com';
                     }
                 }
@@ -548,9 +548,10 @@ window.previewZoomReset = function() {
     if (target) target.style.transform = 'scale(1)';
 };
 
-window.openFilePreview = function(url, filename, fileType) {
-    if (!url) return;
-    const name = filename || url.split('/').pop() || 'file';
+window.openFilePreview = function(rawUrl, filename, fileType) {
+    if (!rawUrl) return;
+    const url = (rawUrl.startsWith('/') && typeof window.apiUrl === 'function') ? window.apiUrl(rawUrl) : rawUrl;
+    const name = filename || rawUrl.split('/').pop() || 'file';
     const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : (fileType || '').toLowerCase();
 
     // Ensure preview window is open and focused
@@ -744,7 +745,7 @@ window.browserNavigate = function(rawUrl, displayUrl) {
     const input = document.getElementById('browser-url-input');
     if (input) input.value = showUrl;
     if (frame) {
-        frame.src = url;
+        frame.src = (url.startsWith('/') && typeof window.apiUrl === 'function') ? window.apiUrl(url) : url;
     }
 };
 

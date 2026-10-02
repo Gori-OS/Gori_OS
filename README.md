@@ -580,3 +580,45 @@ If you have third-party antivirus software installed (e.g. Norton 360, McAfee Li
   2. If using separate 2.4GHz and 5GHz SSIDs, connect both devices to the same frequency band or ensure SSID bridging is enabled.
   3. Log into your router's web admin (usually `http://192.168.1.1` or `http://192.168.0.1`), go to Wireless Settings / Advanced, and verify **"AP Isolation" / "Station Isolation"** is **Disabled**.
 
+---
+
+## Local vs Vercel + Render
+
+Nova OS is architected for dual-environment deployment: local development on Windows, and cloud deployment with the static frontend on **Vercel** (`https://gorios-frontend.vercel.app/`) and the FastAPI backend on **Render** (`https://gori-os.onrender.com`).
+
+### Automatic Environment Switching
+
+The frontend configuration layer (`Ai_voice/frontend/js/config.js`) auto-detects the active deployment environment without manual configuration:
+
+- **Local Machine (`localhost`, `127.0.0.1`, `::1`, or private LAN IPs `192.168.x.x`, `10.x.x.x`, `172.16-31.x.x`)**:
+  - `API_BASE = ''` (same-origin relative calls).
+  - WebSocket connects to `ws://${host}:${targetPort}/ws` alternating between port 7891 and 7890.
+  - UI displays active local ports (`HTTP 7890 | WS 7891`).
+- **Cloud Deployment (`https://gorios-frontend.vercel.app` or Render `/desktop/`)**:
+  - `API_BASE = 'https://gori-os.onrender.com'` (cross-origin HTTPS calls).
+  - WebSocket connects to `wss://gori-os.onrender.com/ws` (single WSS endpoint on standard HTTPS/WSS port).
+  - UI displays real cloud endpoints (`Render: gori-os.onrender.com | WS: /ws`).
+- **Testing & Overrides**:
+  - Custom backend override via URL query parameter: `?api=https://custom-backend.example.com`.
+  - Stored persistent override via browser `localStorage.setItem('goori_api_base', 'https://custom-backend.example.com')`.
+
+### Cold Start Resilience (Render Free Tier)
+
+Render free tier instances sleep after 15 minutes of inactivity. When the backend is waking up:
+- Connection and health check requests display a non-intrusive `"Server waking up, please wait…"` indicator in the desktop status widgets.
+- The client retries automatically using exponential backoff (up to ~60 seconds) until the instance is awake and online.
+
+### Environment Variables
+
+Configure these environment variables in your local `.env` or Render environment settings:
+
+| Variable | Required | Default | Description |
+| :--- | :---: | :--- | :--- |
+| **`GROQ_API_KEY`** | Yes (Voice) | *(None)* | Groq Cloud API key for natural language command intent parsing and task extraction. |
+| **`ASSEMBLYAI_API_KEY`** | Yes (Mic) | *(None)* | AssemblyAI API key for issuing short-lived (60s) browser streaming tokens via `/token`. |
+| **`UTILITY_BACKEND_URL`** | No | `https://goori-os-backend-endpoints.onrender.com` | Central override for file conversions and processing endpoints across `task_pipeline.py`, `groq_service.py`, and `file_processing_service.py`. Falls back to `endpoints.json`. |
+| **`ALLOWED_ORIGINS`** | No | `https://gorios-frontend.vercel.app, https://gori-os.onrender.com, localhost origins` | Comma-separated list of trusted cross-origin origins for CORS preflight, Authorization headers, multipart uploads, and `/token` voice streaming. |
+| **`PORT_WS`** | No | `7891` (local) / `$PORT` (cloud) | WebSocket listening port. On Render, set to match `$PORT` (or omit) so `/ws` is served directly on Render's assigned port. |
+| **`PORT` / `PORT_HTTP`**| No | `7890` (local) | Primary HTTP port. Set automatically by Render's environment (`$PORT`). |
+
+

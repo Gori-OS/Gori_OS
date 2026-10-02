@@ -24,6 +24,7 @@ from backend.services.file_processing_service import (
     PHOTOS_DIR,
     UPLOAD_DIR
 )
+from backend.config.endpoints import get_utility_backend_url
 
 logger = logging.getLogger("nova_bridge.groq_service")
 
@@ -488,8 +489,8 @@ class GroqService:
                 "error": "NO_MATCHING_ENDPOINT"
             }
 
-        # Execute upload to backend https://goori-os-backend-endpoints.onrender.com
-        base_url = (os.environ.get("UTILITY_BACKEND_URL") or "https://goori-os-backend-endpoints.onrender.com").rstrip("/")
+        # Execute upload to utility backend
+        base_url = get_utility_backend_url()
         endpoint_url = f"{base_url}{endpoint}"
         multi_file = endpoint in ("/merge-pdfs", "/images-to-pdf")
         file_field = "files" if multi_file else "file"

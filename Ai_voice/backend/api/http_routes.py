@@ -2,6 +2,7 @@ import os
 import time
 import ipaddress
 import logging
+import threading
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 from fastapi import APIRouter, Header, UploadFile, File, Form, HTTPException, status, Query, Request
@@ -40,6 +41,32 @@ def is_loopback_client(host: Optional[str]) -> bool:
         return ip.is_loopback
     except ValueError:
         return False
+
+def is_direct_loopback_request(request: Request) -> bool:
+    """
+    Checks whether the request is genuinely from a direct local loopback client.
+    Never treats Render proxy or forwarded traffic as loopback.
+    """
+    if request.headers.get("x-forwarded-for") or request.headers.get("x-forwarded-host") or request.headers.get("x-forwarded-proto"):
+        return False
+    host = request.client.host if request.client else None
+    return is_loopback_client(host)
+
+# In-memory sliding-window rate limit for token minting by Origin
+_token_rate_limits: Dict[str, List[float]] = {}
+_token_rate_limit_lock = threading.Lock()
+TOKEN_MAX_PER_MINUTE = 10
+
+def check_token_rate_limit(client_ip: str) -> bool:
+    """Allows at most TOKEN_MAX_PER_MINUTE tokens per IP per 60 seconds."""
+    now = time.time()
+    with _token_rate_limit_lock:
+        timestamps = _token_rate_limits.setdefault(client_ip, [])
+        _token_rate_limits[client_ip] = [t for t in timestamps if now - t < 60.0]
+        if len(_token_rate_limits[client_ip]) >= TOKEN_MAX_PER_MINUTE:
+            return False
+        _token_rate_limits[client_ip].append(now)
+        return True
 
 def verify_token(authorization: Optional[str] = None, token: Optional[str] = None) -> Dict[str, Any]:
     """Helper to validate bearer token from header or query param with resilient parsing."""
@@ -88,15 +115,41 @@ async def get_streaming_token(
     Only allows loopback clients (127.0.0.1, ::1, localhost) or paired clients
     with a valid bearer token. Returns 403 otherwise.
     """
-    client_ip = request.client.host if request.client else None
-    if not is_loopback_client(client_ip):
+    is_direct_loopback = is_direct_loopback_request(request)
+    is_authorized = is_direct_loopback
+
+    # Check for paired bearer token
+    if not is_authorized and (authorization or token):
         try:
             verify_token(authorization=authorization, token=token)
+            is_authorized = True
         except HTTPException:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Forbidden: Non-loopback client requires a valid pairing token."
-            )
+            is_authorized = False
+
+    # Check for trusted Origin allowlist with per-IP rate limiting
+    if not is_authorized:
+        req_origin = request.headers.get("origin")
+        allowed_origins_env = os.environ.get("ALLOWED_ORIGINS")
+        if allowed_origins_env:
+            trusted_origins = [o.strip().rstrip("/") for o in allowed_origins_env.split(",") if o.strip()]
+        else:
+            trusted_origins = ["https://gorios-frontend.vercel.app", "https://gori-os.onrender.com"]
+
+        if req_origin and req_origin.rstrip("/") in trusted_origins:
+            forwarded = request.headers.get("x-forwarded-for")
+            rate_ip = forwarded.split(",")[0].strip() if forwarded else (request.client.host if request.client else "unknown")
+            if not check_token_rate_limit(rate_ip):
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail="Rate limit exceeded for streaming voice token generation. Please wait a moment."
+                )
+            is_authorized = True
+
+    if not is_authorized:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden: Non-loopback client requires a valid pairing token."
+        )
 
     api_key = os.environ.get("ASSEMBLYAI_API_KEY")
     if not api_key or not api_key.strip():
@@ -159,15 +212,28 @@ async def health_endpoint(request: Request):
     ws_port = int(os.environ.get("PORT_WS", os.environ.get("WS_PORT", "7891")))
     lan_ips = get_lan_ipv4_addresses()
 
-    # Determine host for ws_urls fallback
-    host = request.url.hostname if (request and request.url and request.url.hostname) else None
-    if not host or host in ("0.0.0.0", "127.0.0.1", "localhost"):
-        host = lan_ips[0] if lan_ips else "127.0.0.1"
+    forwarded_host = request.headers.get("x-forwarded-host")
+    forwarded_proto = request.headers.get("x-forwarded-proto")
 
-    ws_urls = [
-        f"ws://{host}:{ws_port}/ws",
-        f"ws://{host}:{http_port}/ws"
-    ]
+    if forwarded_host:
+        ws_proto = "wss" if (forwarded_proto == "https" or request.url.scheme == "https") else "ws"
+        if ws_proto == "wss" or ws_port == http_port:
+            ws_urls = [f"{ws_proto}://{forwarded_host}/ws"]
+        else:
+            ws_urls = [
+                f"{ws_proto}://{forwarded_host}:{ws_port}/ws",
+                f"{ws_proto}://{forwarded_host}:{http_port}/ws"
+            ]
+    else:
+        # Determine host for ws_urls fallback
+        host = request.url.hostname if (request and request.url and request.url.hostname) else None
+        if not host or host in ("0.0.0.0", "127.0.0.1", "localhost"):
+            host = lan_ips[0] if lan_ips else "127.0.0.1"
+
+        ws_urls = [
+            f"ws://{host}:{ws_port}/ws",
+            f"ws://{host}:{http_port}/ws"
+        ]
 
     return {
         "status": "ok",
@@ -571,10 +637,13 @@ async def browser_search_endpoint(q: Optional[str] = Query(None)):
     """
     from backend.services.browser_service import browser_service
     if not q or not q.strip():
-        return HTMLResponse(content=browser_service.render_google_homepage())
-    search_data = browser_service.perform_search(q)
-    html_content = browser_service.render_google_results_page(q, search_data)
-    return HTMLResponse(content=html_content)
+        content = browser_service.render_google_homepage()
+    else:
+        search_data = browser_service.perform_search(q)
+        content = browser_service.render_google_results_page(q, search_data)
+    resp = HTMLResponse(content=content)
+    resp.headers["Content-Security-Policy"] = "frame-ancestors 'self' https://gorios-frontend.vercel.app *"
+    return resp
 
 @router.get("/api/browser/proxy", response_class=HTMLResponse)
 async def browser_proxy_endpoint(url: str = Query(...)):
@@ -583,5 +652,7 @@ async def browser_proxy_endpoint(url: str = Query(...)):
     """
     from backend.services.browser_service import browser_service
     html_content = await browser_service.proxy_web_page(url)
-    return HTMLResponse(content=html_content)
+    resp = HTMLResponse(content=html_content)
+    resp.headers["Content-Security-Policy"] = "frame-ancestors 'self' https://gorios-frontend.vercel.app *"
+    return resp
 

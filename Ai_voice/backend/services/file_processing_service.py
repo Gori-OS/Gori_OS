@@ -7,6 +7,8 @@ from typing import Dict, Any, Optional, List, Tuple
 import httpx
 from backend.services.filename_normalizer import normalize_file_command, CORE_FILE_EXTENSIONS
 
+from backend.config.endpoints import get_utility_backend_url
+
 logger = logging.getLogger("nova_bridge.file_processing")
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -275,7 +277,7 @@ class FileProcessingService:
                 logger.warning(f"Failed to load {self.config_path}, using defaults: {e}")
 
         return {
-            "base_url": os.environ.get("UTILITY_BACKEND_URL", "https://goori-os-backend-endpoints.onrender.com"),
+            "base_url": get_utility_backend_url(self.config_path),
             "timeout_seconds": 30,
             "endpoints": []
         }
@@ -811,7 +813,7 @@ class FileProcessingService:
                 "error": "NO_MATCHING_ENDPOINT"
             }
 
-        base_url = (os.environ.get("UTILITY_BACKEND_URL") or self.config.get("base_url", "https://goori-os-backend-endpoints.onrender.com")).rstrip("/")
+        base_url = get_utility_backend_url(self.config_path)
         endpoint_url = f"{base_url}{endpoint_path}"
         method = endpoint_rule.get("method", "POST").upper()
         multi_file = endpoint_rule.get("multi_file", False) or len(found_files) > 1 or endpoint_path in ("/merge-pdfs", "/images-to-pdf")
